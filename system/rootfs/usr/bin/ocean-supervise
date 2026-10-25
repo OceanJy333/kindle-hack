@@ -1,0 +1,20 @@
+#!/bin/sh
+# input: service name and command; output: backed-off restarts and durable exit records; pos: init wrapper that keeps boot evidence from being flooded.
+name=$1; shift
+log=/mnt/us/ocean-os/blackbox/current
+[ -d "$log" ] || log=/tmp
+delay=2; fast=0
+while :; do
+ start=$(cut -d. -f1 /proc/uptime)
+ "$@" >>"$log/$name.log" 2>&1
+ code=$?
+ now=$(cut -d. -f1 /proc/uptime)
+ echo "$now $name exit=$code ran=$((now-start))s" >>"$log/events.log"
+ if [ $((now-start)) -ge 30 ]; then delay=2; fast=0; else fast=$((fast+1)); fi
+ if [ "$fast" -ge 20 ]; then
+  echo "$now $name parked after $fast short runs" >>"$log/events.log"
+  while :; do sleep 3600; done
+ fi
+ sleep "$delay"
+ delay=$((delay*2)); [ "$delay" -gt 60 ] && delay=60
+done

@@ -1,0 +1,22 @@
+#!/bin/sh
+# input: station connected/disconnected callback; output: one DHCP client; pos: wireless lease ownership.
+set -eu
+[ "${1:-}" = wlan0 ] || exit 1
+case "${2:-}" in CONNECTED|DISCONNECTED) ;; *) exit 0;; esac
+pidfile=/run/ocean-wifi-dhcp.pid
+if [ -r "$pidfile" ]; then
+ pid=$(cat "$pidfile")
+ if [ -n "$pid" ] && [ -r /proc/"$pid"/cmdline ]; then
+  case "$(tr '\000' ' ' </proc/"$pid"/cmdline)" in
+   *udhcpc*'-i wlan0'*) kill "$pid";;
+  esac
+ fi
+fi
+case "${2:-}" in
+ CONNECTED)
+  udhcpc -f -i wlan0 -s /usr/share/udhcpc/default.script >/run/ocean-wifi-dhcp.log 2>&1 &
+  echo $! >"$pidfile";;
+ DISCONNECTED)
+  ifconfig wlan0 0.0.0.0
+  : >/run/resolv.conf;;
+esac

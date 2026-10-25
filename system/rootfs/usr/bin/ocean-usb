@@ -1,0 +1,21 @@
+#!/bin/sh
+# input: USB cable; output: Mac-compatible Ethernet and direct DHCP; pos: standalone wired access.
+set -eu
+/usr/bin/ocean-boot-event ocean-usb-starting
+for module in fsl_otg_arc ehci_hcd arcotg_udc; do modprobe "$module"; done
+modprobe g_ether host_addr=02:4f:43:45:41:01 dev_addr=02:4f:43:45:41:02
+ifconfig usb0 192.168.77.2 netmask 255.255.255.0 up
+: >/run/usb-ready
+/usr/bin/ocean-boot-event ocean-usb-prepared
+cat >/run/usb-dhcp.conf <<'CONFIG'
+start 192.168.77.1
+end 192.168.77.1
+interface usb0
+lease_file /run/usb.leases
+pidfile /run/usb-dhcp.pid
+option subnet 255.255.255.0
+option lease 3600
+max_leases 1
+CONFIG
+: >/run/usb.leases
+exec udhcpd -f /run/usb-dhcp.conf

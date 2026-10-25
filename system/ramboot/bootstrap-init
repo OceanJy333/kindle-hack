@@ -1,0 +1,23 @@
+#!/bin/sh
+# input: stock kernel and temporary loader; output: new native kernel handoff; pos: emulated kexec acceptance.
+set -eu
+export PATH=/bin:/sbin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs tmpfs /dev
+echo /sbin/mdev >/proc/sys/kernel/hotplug
+mdev -s
+for n in $(seq 1 60); do [ -b /dev/mmcblk0p4 ] && break; sleep 1; done
+losetup -o 8192 /dev/loop0 /dev/mmcblk0p4
+mount -t vfat -o noatime /dev/loop0 /mnt/us
+insmod /ocean-kexec.ko
+# Module registration precedes the asynchronous hotplug node creation.
+mdev -s
+[ -c /dev/kexec ]
+/kexec-ctl probe
+/kexec-ctl load /mnt/us/ocean-os/zImage /mnt/us/ocean-os/initramfs.cpio \
+ 'console=ttymxc0,115200 log_pos_goal=0x8fff0000 root=/dev/loop1 ro rootwait ip=off video=mxcepdcfb:E60,bpp=8,x_mem=3M loglevel=7 initcall_debug ocean_boot_timeout=180 panic=10'
+sync
+mount -o remount,ro /mnt/us
+echo OCEAN_KEXEC_EXECUTING
+exec /kexec-ctl execute

@@ -1,0 +1,56 @@
+diff --git a/hw/sd/sdhci.c b/hw/sd/sdhci.c
+index 7e0529d..70fcabf 100644
+--- a/hw/sd/sdhci.c
++++ b/hw/sd/sdhci.c
+@@ -1180,6 +1180,18 @@ static uint64_t sdhci_read(void *opaque, hwaddr offset, unsigned size)
+         break;
+     case SDHC_NORINTSTS:
+         ret = s->norintsts | (s->errintsts << 16);
++        /*
++         * Polled SDMA drivers may leave CMD_COMPLETE set until the data
++         * phase finishes.  Expose that first status sample, then run the
++         * pending transfer; completion must not depend on an IRQ ACK.
++         */
++        if (object_dynamic_cast(OBJECT(s), TYPE_IMX_USDHC) &&
++            timer_pending(s->transfer_timer) &&
++            (s->norintsts & SDHC_NIS_CMDCMP) &&
++            (s->trnmod & SDHC_TRNS_DMA) &&
++            SDHC_DMA_TYPE(s->hostctl1) == SDHC_CTRL_SDMA) {
++            sdhci_resume_pending_transfer(s);
++        }
+         break;
+     case SDHC_NORINTSTSEN:
+         ret = s->norintstsen | (s->errintstsen << 16);
+@@ -1290,18 +1302,27 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
+     }
+ 
+     switch (offset & ~0x3) {
+-    case SDHC_SYSAD:
+-        if (!TRANSFERRING_DATA(s->prnsts)) {
+-            s->sdmasysad = (s->sdmasysad & mask) | value;
++    case SDHC_SYSAD: {
++        bool sdma_active = (s->prnsts & SDHC_DATA_INHIBIT) &&
++                           (s->trnmod & SDHC_TRNS_DMA) &&
++                           SDHC_DMA_TYPE(s->hostctl1) == SDHC_CTRL_SDMA;
++
++        if (!TRANSFERRING_DATA(s->prnsts) || sdma_active) {
+             MASKED_WRITE(s->sdmasysad, mask, value);
+-            /* Writing to last byte of sdmasysad might trigger transfer */
+-            if (!(mask & 0xFF000000) && s->blkcnt &&
++            /*
++             * An address write resumes an existing SDMA data phase.  Before
++             * a command it only programs the address: barebox sets BLK_ATT
++             * first, so using blkcnt alone consumes a stale block here.
++             */
++            if (!(mask & 0xFF000000) && sdma_active &&
++                !timer_pending(s->transfer_timer) && s->blkcnt &&
+                 (s->blksize & BLOCK_SIZE_MASK) &&
+                 SDHC_DMA_TYPE(s->hostctl1) == SDHC_CTRL_SDMA) {
+                 sdhci_sdma_transfer(s);
+             }
+         }
+         break;
++    }
+     case SDHC_BLKSIZE:
+         if (!TRANSFERRING_DATA(s->prnsts)) {
+             uint16_t blksize = s->blksize;

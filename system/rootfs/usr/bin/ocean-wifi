@@ -1,0 +1,24 @@
+#!/bin/sh
+# input: persistent wireless profiles; output: supervised local WPA service; pos: independent station networking.
+set -eu
+/usr/bin/ocean-boot-event ocean-wifi-starting
+modprobe cfg80211
+modprobe ath6kl_sdio
+config=/var/local/ocean/wpa_supplicant.conf
+umask 077
+if [ ! -e "$config" ]; then
+ cat >"$config" <<'CONFIG'
+ctrl_interface=/run/wpa_supplicant
+update_config=1
+CONFIG
+fi
+# wpa_supplicant reads the profile before it touches the driver, so an unusable
+# interface name checks the file alone. A profile it cannot parse is kept aside.
+if /usr/sbin/wpa_supplicant -c "$config" -i ocean-probe0 -D none 2>&1 | grep -q 'Failed to read or parse'; then
+ mv "$config" "$config.unreadable"
+ printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\n' >"$config"
+ echo "OCEAN_WIFI profile unreadable; kept as $config.unreadable"
+fi
+# Subscribe the lease monitor before association can emit CONNECTED.
+/usr/bin/ocean-boot-event ocean-wifi-prepared
+exec /usr/sbin/wpa_supplicant -W -i wlan0 -D nl80211,wext -c "$config"

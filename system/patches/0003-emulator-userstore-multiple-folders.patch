@@ -1,0 +1,77 @@
+diff --git a/eink_emulator/images/imx6_mmc.py b/eink_emulator/images/imx6_mmc.py
+index 8252364..c1205de 100755
+--- a/eink_emulator/images/imx6_mmc.py
++++ b/eink_emulator/images/imx6_mmc.py
+@@ -137,7 +137,7 @@ class FatNode:
+         return 0 if self.source is None else self.source.stat().st_size
+ 
+ 
+-def build_fat_tree(source: Path) -> FatNode:
++def build_fat_tree(source: Path | list[Path]) -> FatNode:
+     """Build a deterministic tree, omitting host metadata from the image."""
+     root = FatNode("")
+ 
+@@ -150,17 +150,21 @@ def build_fat_tree(source: Path) -> FatNode:
+             if path.is_dir():
+                 add_directory(node, path)
+ 
+-    payload_root = FatNode(source.name)
+-    root.children.append(payload_root)
+-    add_directory(payload_root, source)
+-
+-    # install.sh creates this before copying the package to the userstore.
+-    etc = next((node for node in payload_root.children if node.name == "etc"), None)
+-    if etc:
+-        config = next((node for node in etc.children if node.name == "config"), None)
+-        if config:
+-            etc.children.append(FatNode("config.default", config.source))
+-            etc.children.sort(key=lambda node: node.name)
++    sources = source if isinstance(source, list) else [source]
++    if len({directory.name.casefold() for directory in sources}) != len(sources):
++        raise ValueError("duplicate userstore directory names")
++    for directory in sources:
++        payload_root = FatNode(directory.name)
++        root.children.append(payload_root)
++        add_directory(payload_root, directory)
++
++        # install.sh creates this before copying the package to the userstore.
++        etc = next((node for node in payload_root.children if node.name == "etc"), None)
++        if etc:
++            config = next((node for node in etc.children if node.name == "config"), None)
++            if config:
++                etc.children.append(FatNode("config.default", config.source))
++                etc.children.sort(key=lambda node: node.name)
+     return root
+ 
+ 
+@@ -176,7 +180,7 @@ def fat_short_name(index: int) -> bytes:
+ 
+ 
+ def write_userstore(disk, output_offset: int, sectors: int,
+-                    payload: Path | None = None) -> None:
++                    payload: Path | list[Path] | None = None) -> None:
+     """Create the nested-MBR p4 and optionally populate its FAT32 userstore."""
+     inner_start = 16
+     fat_sectors = sectors - inner_start
+@@ -445,7 +449,7 @@ def build(
+     diagnostics_kernel: Path | None = None,
+     diagnostics: Path | None = None,
+     local: Path | None = None,
+-    userstore: Path | None = None,
++    userstore: Path | list[Path] | None = None,
+ ) -> None:
+     """Build a sparse legacy i.MX6 Kindle eMMC user-area image."""
+     try:
+@@ -465,8 +469,10 @@ def build(
+         raise SystemExit("diagnostics image must be exactly 64 MiB")
+     if local and local.stat().st_size != 64 * 1024 * 1024:
+         raise SystemExit("local image must be exactly 64 MiB")
+-    if userstore and not userstore.is_dir():
+-        raise SystemExit("userstore must name a directory")
++    if userstore:
++        roots = userstore if isinstance(userstore, list) else [userstore]
++        if any(not root.is_dir() for root in roots):
++            raise SystemExit("userstore must name directories")
+ 
+     output.parent.mkdir(parents=True, exist_ok=True)
+     with output.open("w+b") as disk:

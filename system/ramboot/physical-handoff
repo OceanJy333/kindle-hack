@@ -1,0 +1,52 @@
+#!/bin/sh
+# input: staged image hashes and paired root access; output: native kernel handoff; pos: physical RAM boot transition.
+set -eu
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+[ "$#" -eq 4 ] || { echo 'Use load|execute KERNEL_SHA INITRAMFS_SHA ROOT_SHA'; exit 2; }
+mode=$1
+case "$mode" in load|execute) ;; *) exit 2;; esac
+[ "$(uname -r)" = 3.0.35-lab126 ] || { echo 'Unexpected source kernel'; exit 1; }
+verify(){
+ actual=$(sha256sum "$1")
+ [ "${actual%% *}" = "$2" ] || { echo "Hash mismatch: $1"; exit 1; }
+}
+verify /mnt/base-us/ocean-os/zImage "$2"
+verify /mnt/base-us/ocean-os/initramfs.cpio "$3"
+verify /mnt/base-us/ocean-os/voyage-rootfs.ext3 "$4"
+/tmp/kexec-ctl probe
+/tmp/kexec-ctl load /mnt/base-us/ocean-os/zImage /mnt/base-us/ocean-os/initramfs.cpio \
+ 'console=ttymxc0,115200 log_pos_goal=0x8fff0000 root=/dev/loop1 ro rootwait ip=off video=mxcepdcfb:E60,bpp=8,x_mem=3M loglevel=7 initcall_debug ocean_boot_timeout=180 panic=10'
+[ "$mode" = execute ] || exit 0
+[ "${SSH_CONNECTION##* }" = 2223 ] || { echo 'Use the RAM-only SSH service on port 2223'; exit 1; }
+
+# Stop storage writers before detaching the old runtime and making both disks read-only.
+for job in framework appmgrd archive todo volumd rcm stackdumpd dpmd tmd dynconfig perfd demd phd cron syslog; do
+ initctl stop "$job" || true
+done
+for process in /proc/[0-9]*; do
+ if grep -Eq '/(var/tmp|tmp)/weread-native/' "$process/maps" 2>/dev/null; then
+  kill -TERM "${process##*/}" || true
+ fi
+done
+for pid in $(pidof ocean-powerd || true); do kill -TERM "$pid"; done
+# The original SSH daemon holds a writable log on the persistent partition.
+# The current session uses the separate daemon whose files and log live in RAM.
+if [ -r /var/local/ocean-ssh/server.pid ]; then
+ kill -TERM "$(cat /var/local/ocean-ssh/server.pid)" || true
+fi
+sleep 2
+if grep -q ' /var/tmp/weread-native ' /proc/mounts; then
+ umount /var/tmp/weread-native
+ losetup -d /dev/loop/1
+fi
+mkdir -p /var/local/ocean/ramboot
+printf '{"kernelSha256":"%s","initramfsSha256":"%s","rootfsSha256":"%s","physicalBootValidated":false}\n' \
+ "$2" "$3" "$4" >/var/local/ocean/ramboot/attempt.json
+sync
+mount -t ext3 -o remount,ro /dev/mmcblk0p3 /var/local
+mount -t vfat -o remount,ro /dev/loop/0 /mnt/base-us
+awk '$2=="/var/local" || $2=="/mnt/base-us" {
+ print; if ($4 ~ /(^|,)ro(,|$)/) count++
+} END {exit count != 2}' /proc/mounts
+echo OCEAN_PHYSICAL_KEXEC_EXECUTING
+exec /tmp/kexec-ctl execute

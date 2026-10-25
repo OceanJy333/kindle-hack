@@ -1,0 +1,27 @@
+#!/bin/sh
+# input: kernel log and runtime state; output: durable boot evidence on user storage; pos: unattended hardware diagnosis.
+dir=/mnt/us/ocean-os/blackbox/current
+mkdir -p "$dir"
+snap(){
+ {
+  echo "== uptime"; cat /proc/uptime
+  echo "== modules"; cat /proc/modules
+  echo "== mounts"; cat /proc/mounts
+  echo "== net"; ifconfig -a
+  echo "== ps"; ps
+  echo "== dev"; ls -l /dev
+  echo "== sys class"; ls -l /sys/class/graphics /sys/class/net /sys/class/udc /sys/class/backlight
+  echo "== interrupts"; cat /proc/interrupts
+  echo "== boot guard"; cat /sys/module/kernel/parameters/ocean_boot_timeout
+ } >"$dir/snapshot-$1.txt" 2>&1
+}
+tick=0
+# 5 s cadence for the first 2 minutes, the window in which boots fail; afterwards the eMMC stays idle.
+# Each pass replaces the log atomically so a reset keeps a complete copy.
+while [ "$tick" -lt 24 ]; do
+ dmesg >"$dir/dmesg.new" 2>&1 && mv "$dir/dmesg.new" "$dir/dmesg.log"
+ case "$tick" in 2|6|12|23) snap "$tick";; esac
+ sync
+ sleep 5
+ tick=$((tick+1))
+done

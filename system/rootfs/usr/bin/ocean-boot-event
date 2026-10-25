@@ -1,0 +1,6 @@
+#!/bin/sh
+# input: boot stage; output: console and reboot-recoverable printk marker; pos: native startup diagnostics.
+set -eu
+message="OCEAN_BOOT $*"
+printf '%s\n' "$message"
+if [ -c /dev/kmsg ]; then printf '<6>%s\n' "$message" >/dev/kmsg; fi

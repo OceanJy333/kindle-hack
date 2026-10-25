@@ -1,0 +1,54 @@
+--- a/drivers/video/mxc/mxc_epdc_fb_lab126.c	2026-10-18 20:38:38
++++ b/drivers/video/mxc/mxc_epdc_fb_lab126.c	2026-10-18 20:38:38
+@@ -766,9 +766,19 @@
+ 	u64 tempOffset;
+ 
+ 	wfm_mode_count = wv_header->mc + 1;
++
++	/*
++	 * The offset table below is Amazon's 64-bit layout. A raw panel
++	 * waveform (3-byte mode table) has none, and reading it as offsets
++	 * walks off the buffer. Without a table that fits, skip the voltage
++	 * control data and let the board defaults stand.
++	 */
++	if (g_fb_data->waveform_buffer_size < sizeof(u64) * (wfm_mode_count + 4))
++		goto error;
+ 
+ 	longOffset = __le64_to_cpu(((uint64_t *)wf_buffer)[0]);
+-	if (longOffset <= (sizeof(u64) * wfm_mode_count))
++	if (longOffset <= (sizeof(u64) * wfm_mode_count) ||
++	    longOffset >= g_fb_data->waveform_buffer_size)
+ 		goto error;
+ 
+ 	if (wv_header->advanced_wfm_flags > 3)
+@@ -785,6 +795,8 @@
+ 			/* Voltage control format V2 */
+ 			avcOffset  = __le64_to_cpu(((uint64_t *)wf_buffer)[wfm_mode_count]);
+ 			tempOffset = __le64_to_cpu(((uint64_t *)wf_buffer)[wfm_mode_count + 1]);
++			if (avcOffset >= tempOffset || tempOffset > g_fb_data->waveform_buffer_size)
++				goto error;
+ 			if (!g_fb_data->waveform_vcd_buffer)
+ 				g_fb_data->waveform_vcd_buffer = kmalloc((tempOffset - avcOffset), GFP_KERNEL);
+ 			memcpy((void *)g_fb_data->waveform_vcd_buffer, &wf_buffer[avcOffset], (tempOffset - avcOffset));
+@@ -796,6 +808,8 @@
+ 			/* Voltage Control and Algorithm Control */
+ 			avcOffset  = __le64_to_cpu(((uint64_t *)wf_buffer)[wfm_mode_count]);
+ 			tempOffset = __le64_to_cpu(((uint64_t *)wf_buffer)[wfm_mode_count + 1]);
++			if (avcOffset >= tempOffset || tempOffset > g_fb_data->waveform_buffer_size)
++				goto error;
+ 			if (!g_fb_data->waveform_vcd_buffer)
+ 				g_fb_data->waveform_vcd_buffer = kmalloc((tempOffset - avcOffset), GFP_KERNEL);
+ 			memcpy((void *)g_fb_data->waveform_vcd_buffer, &wf_buffer[avcOffset], (tempOffset - avcOffset));
+@@ -834,7 +848,12 @@
+ 	if (wv_header->advanced_wfm_flags > 3)
+ 		goto error;
+ 
++	if (wf_buffer_len < sizeof(u64) * (wfm_mode_count + wv_header->advanced_wfm_flags + 1))
++		goto error;
++
+ 	xwiOffset = __le64_to_cpu(((uint64_t *)wf_buffer)[wfm_mode_count + wv_header->advanced_wfm_flags]);
++	if (xwiOffset >= wf_buffer_len)
++		goto error;
+ 	waveform_xwi_len = wf_buffer[xwiOffset];
+ 	waveform_xwi_buffer = wf_buffer + xwiOffset + 1;
+ 

@@ -1,0 +1,12 @@
+#!/bin/sh
+# input: device-specific host key and paired public key; output: key-only SSH; pos: native development service.
+set -eu
+/usr/bin/ocean-boot-event ocean-ssh-starting
+state=/var/local/ocean-ssh
+mkdir -p "$state"
+chmod 700 "$state"
+if [ ! -s "$state/host_key" ]; then
+ /usr/bin/dropbearkey -t ed25519 -f "$state/host_key" >/dev/null
+fi
+/usr/bin/ocean-boot-event ocean-ssh-prepared
+exec /usr/sbin/dropbear -F -j -k -p 2222 -r "$state/host_key" -P /run/ocean-ssh.pid

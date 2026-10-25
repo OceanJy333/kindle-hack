@@ -1,0 +1,8 @@
+{
+  "model": "kindle-voyage",
+  "machine": "voyage",
+  "firmware": "5.13.6",
+  "width": 1072,
+  "height": 1448,
+  "memoryMiB": 512
+}

@@ -1,0 +1,21 @@
+#!/bin/sh
+# input: kernel device/firmware events; output: device nodes or per-device firmware; pos: independent hardware loader.
+set -eu
+if [ "${SUBSYSTEM:-}" != firmware ] || [ "${ACTION:-}" != add ]; then
+ exec /sbin/mdev
+fi
+request=/sys${DEVPATH:?}
+[ -e "$request/loading" ] || exit 1
+case "${FIRMWARE:-}" in
+ imx/epdc*|imx/default.fw.gz) source=/var/local/ocean/hardware/panel.wrf.gz;;
+ /opt/ar6k/*) source=$FIRMWARE;;
+ *) source=/lib/firmware/${FIRMWARE:?};;
+esac
+if [ ! -r "$source" ]; then echo -1 >"$request/loading"; exit 1; fi
+echo 1 >"$request/loading"
+if cat "$source" >"$request/data"; then
+ echo 0 >"$request/loading"
+else
+ echo -1 >"$request/loading"
+ exit 1
+fi

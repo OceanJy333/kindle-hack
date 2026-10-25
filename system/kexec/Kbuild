@@ -1,0 +1,5 @@
+# input: matching 3.0 kernel headers; output: temporary kernel loader; pos: RAM boot preparation.
+# SPDX-License-Identifier: GPL-2.0-only
+obj-m := ocean-kexec.o
+ocean-kexec-y := bridge.o core.o machine.o relocate_kernel.o
+ccflags-y := -include $(src)/kexec-mod.h

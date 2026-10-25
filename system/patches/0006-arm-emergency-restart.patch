@@ -1,0 +1,24 @@
+--- a/arch/arm/kernel/process.c
++++ b/arch/arm/kernel/process.c
+@@ -98,7 +98,8 @@
+ void arm_machine_restart(char mode, const char *cmd)
+ {
+ 
+-	if(pm_restart) {
++	/* The PMIC callback performs sleeping I2C transfers. */
++	if (pm_restart && !in_atomic() && !irqs_disabled()) {
+ 		pm_restart(mode,cmd);
+ 	}
+ 
+--- a/arch/arm/plat-mxc/system.c
++++ b/arch/arm/plat-mxc/system.c
+@@ -38,6 +38,9 @@
+ 
+ static void arch_reset_special_mode(char mode, const char *cmd)
+ {
++	/* Emergency restarts have no userspace mode string. */
++	if (!cmd)
++		return;
+ 	if (strcmp(cmd, "download") == 0)
+ 		do_switch_mfgmode();
+ 	else if (strcmp(cmd, "recovery") == 0)

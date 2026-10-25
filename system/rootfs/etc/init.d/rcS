@@ -1,0 +1,43 @@
+#!/bin/sh
+# input: Voyage kernel and persistent partitions; output: device nodes and hardware; pos: independent boot setup.
+set -eu
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys || mount -t sysfs sysfs /sys
+mountpoint -q /dev || mount -t tmpfs -o mode=755,size=16m tmpfs /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o mode=1777,size=32m tmpfs /dev/shm
+mount -t tmpfs -o mode=1777,size=32m tmpfs /tmp
+mount -t tmpfs -o mode=755,size=16m tmpfs /run
+echo /usr/bin/ocean-hotplug >/proc/sys/kernel/hotplug
+mdev -s
+hostname ocean-voyage
+ifconfig lo 127.0.0.1 up
+mount -t ext3 -o noatime /dev/mmcblk0p3 /var/local
+mkdir -p /var/local/ocean/root/.ssh /var/local/weread-port/runtime
+chmod 700 /var/local/ocean/root /var/local/ocean/root/.ssh /var/local/weread-port/runtime
+# The exported Kindle FAT volume starts 8192 bytes into p4.
+modprobe nls_utf8
+if ! mountpoint -q /mnt/us; then
+ losetup -o 8192 /dev/loop0 /dev/mmcblk0p4
+ mount -t vfat -o noatime,utf8 /dev/loop0 /mnt/us
+fi
+# Keep the previous boot's evidence; the supervisor and blackbox write into current/.
+box=/mnt/us/ocean-os/blackbox
+mkdir -p "$box"
+rm -rf "$box/previous"
+if [ -d "$box/current" ]; then mv "$box/current" "$box/previous"; fi
+mkdir -p "$box/current"
+echo "0 boot $(uname -r)" >"$box/current/events.log"
+ln -s /opt/ocean /tmp/weread-native
+if [ -r /mnt/us/ocean-install/ssh/authorized_keys ]; then
+ cp /mnt/us/ocean-install/ssh/authorized_keys /root/.ssh/authorized_keys
+ chmod 600 /root/.ssh/authorized_keys
+fi
+# Fewer flusher wake-ups: e-reader writes are small and rare, so 15 s writeback loses little.
+echo 1500 >/proc/sys/vm/dirty_writeback_centisecs
+governor=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+if [ -e "$governor" ]; then echo ondemand >"$governor"; fi
+/usr/bin/ocean-boot-event storage-ready
+printf 'OCEAN_INIT_READY kernel=%s pid1=%s\n' "$(uname -r)" "$(readlink /proc/1/exe)"

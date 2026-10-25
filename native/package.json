@@ -1,0 +1,14 @@
+{
+  "name": "kindle-agent-terminal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node host.ts",
+    "test": "node --test test.ts notifications.test.ts"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "fast-xml-parser": "5.11.2",
+    "fontkit": "2.0.4"
+  }
+}

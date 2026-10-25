@@ -1,0 +1,12 @@
+# input: mounted filesystems and paired identity; output: supervised native services; pos: independent PID 1 policy.
+::sysinit:/etc/init.d/rcS
+::once:/usr/bin/ocean-guard
+::once:/usr/bin/ocean-blackbox
+::respawn:/usr/bin/ocean-supervise usb /usr/bin/ocean-usb
+::respawn:/usr/bin/ocean-supervise ssh /usr/bin/ocean-ssh
+::respawn:/usr/bin/ocean-supervise power /usr/sbin/ocean-powerd
+::respawn:/usr/bin/ocean-supervise desktop /usr/bin/ocean-desktop
+::respawn:/usr/bin/ocean-supervise wifi /usr/bin/ocean-wifi
+::respawn:/usr/bin/ocean-supervise wifi-events /usr/bin/ocean-wifi-events
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r

@@ -1,0 +1,33 @@
+#!/bin/sh
+# input: kernel boot deadline, running services or host acknowledgement; output: accepted boot or reboot to the stock system; pos: userspace half of the boot guard.
+param=/sys/module/kernel/parameters/ocean_boot_timeout
+log=/var/local/ocean/boot
+limit=$(cat "$param" 2>/dev/null || echo 0)
+[ "$limit" -gt 0 ] || exit 0
+mkdir -p "$log"
+# Leave the kernel timer 30 s of margin as a second, independent reset.
+wait=$((limit-30)); [ "$wait" -lt 5 ] && wait=5
+healthy() {
+ [ -e /dev/fb0 ] && pidof dropbear >/dev/null && pidof ocean-powerd >/dev/null &&
+  ps | grep -q '[w]eread-native/'
+}
+i=0 good=0
+while [ "$i" -lt "$wait" ]; do
+ [ "$(cat "$param" 2>/dev/null || echo 0)" = 0 ] && exit 0
+ if healthy; then good=$((good+1)); else good=0; fi
+ # Display, desktop, power and SSH stable for 15 s: the boot accepts itself.
+ if [ "$good" -ge 15 ]; then
+  echo 0 >"$param"
+  echo 0 >"$log/attempts"
+  echo "$(cut -d. -f1 /proc/uptime) guard: self-accepted" >>"$log/events.log"
+  sync
+  exit 0
+ fi
+ sleep 1; i=$((i+1))
+done
+echo "$(cut -d. -f1 /proc/uptime) guard: not healthy, rebooting to the stock system" >>"$log/events.log"
+dmesg >"$log/dmesg-last-failure.log" 2>&1
+sync
+/usr/bin/ocean-boot-event ocean-guard-expired
+sync
+exec reboot -f

@@ -1,0 +1,13 @@
+#!/bin/sh
+# input: DHCP lease environment; output: wireless address, route and DNS; pos: independent network configuration.
+set -eu
+case "$1" in
+ deconfig) ifconfig "$interface" 0.0.0.0;;
+ bound|renew)
+  ifconfig "$interface" "$ip" netmask "$subnet"
+  if [ -n "${router:-}" ]; then
+   ip route replace default via "${router%% *}" dev "$interface"
+  fi
+  : >/run/resolv.conf
+  for server in ${dns:-}; do printf 'nameserver %s\n' "$server" >>/run/resolv.conf; done;;
+esac

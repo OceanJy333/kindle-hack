@@ -1,0 +1,39 @@
+#!/bin/sh
+# input: native kernel/initramfs and user storage; output: independent loop root; pos: non-flash boot entry.
+set -eu
+export PATH=/bin:/sbin
+fail(){ echo "OCEAN_RAMBOOT_FAILED: $*" >/dev/console; sleep 5; reboot -f; }
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs -o mode=755,size=16m tmpfs /dev
+echo /sbin/mdev >/proc/sys/kernel/hotplug
+mdev -s
+echo "<6>OCEAN_RAMBOOT_INIT_STARTED" >/dev/kmsg
+for n in $(seq 1 60); do
+ [ -b /dev/mmcblk0p4 ] && break
+ sleep 1
+done
+[ -b /dev/mmcblk0p4 ] || fail "user storage missing"
+modprobe nls_utf8 || fail "UTF-8 module"
+losetup -o 8192 /dev/loop0 /dev/mmcblk0p4 || fail "FAT loop"
+mount -t vfat -o noatime,utf8 /dev/loop0 /mnt/us || fail "FAT mount"
+echo "<6>OCEAN_RAMBOOT_USER_MOUNTED" >/dev/kmsg
+echo OCEAN_RAMBOOT_USER_MOUNTED >/mnt/us/ocean-os/boot-status
+# Kernel log up to this point, including driver probe failures, survives any later hang.
+mkdir -p /mnt/us/ocean-os/blackbox
+dmesg >/mnt/us/ocean-os/blackbox/early-dmesg.log 2>&1 || true
+sync
+image=/mnt/us/ocean-os/voyage-rootfs.ext3
+[ -r "$image" ] || fail "root image missing"
+losetup -r /dev/loop1 "$image" || fail "root loop"
+mount -t ext3 -o ro /dev/loop1 /newroot || fail "root mount"
+echo OCEAN_RAMBOOT_ROOT_MOUNTED >>/mnt/us/ocean-os/boot-status
+sync
+mount --move /mnt/us /newroot/mnt/us
+mount --move /proc /newroot/proc
+mount --move /sys /newroot/sys
+mount --move /dev /newroot/dev
+echo OCEAN_RAMBOOT_ROOT_READY >/newroot/dev/console
+# Nothing listens on the UART; holding it open as stdio keeps its wake interrupt firing (~80/s idle).
+exec 0</newroot/dev/null 1>/newroot/dev/null 2>&1
+exec switch_root /newroot /sbin/init

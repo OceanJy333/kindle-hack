@@ -1,0 +1,16 @@
+#!/bin/sh
+# input: native display/input drivers and runtime; output: foreground Qt desktop; pos: isolated display service.
+set -eu
+export TZ=CST-8
+# USB and Wi-Fi start as separate init services, even if a display probe stalls.
+/usr/bin/ocean-boot-event ocean-desktop-starting
+# A display driver fault can leave module loading locked. Bring the wired link up first so it stays reachable.
+for n in $(seq 1 30); do [ -e /run/usb-ready ] && break; sleep 1; done
+modprobe mxc_epdc_fb
+[ -e /dev/fb0 ]
+if [ -e /sys/class/graphics/fb0/rotate ]; then echo 3 >/sys/class/graphics/fb0/rotate; fi
+for module in cyttsp4_core cyttsp4_i2c cyttsp4_mt_b drv26xx_haptics fsr_keypad; do
+ modprobe "$module" || echo "Input module failed: $module" >&2
+done
+/usr/bin/ocean-boot-event ocean-desktop-prepared
+exec sh /opt/ocean/launch.sh

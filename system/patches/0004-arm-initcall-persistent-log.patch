@@ -1,0 +1,30 @@
+--- a/init/main.c
++++ b/init/main.c
+@@ -13,6 +13,8 @@
+ #include <linux/module.h>
+ #include <linux/proc_fs.h>
+ #include <linux/kernel.h>
++#include <asm/cacheflush.h>
++#include <asm/outercache.h>
+ #include <linux/syscalls.h>
+ #include <linux/stackprotector.h>
+ #include <linux/string.h>
+@@ -652,6 +654,9 @@
+ 	int ret;
+ 
+ 	printk(KERN_DEBUG "calling  %pF @ %i\n", fn, task_pid_nr(current));
++	/* Keep initcall diagnostics in DRAM across a watchdog reset. */
++	flush_cache_all();
++	outer_flush_all();
+ 	calltime = ktime_get();
+ 	ret = fn();
+ 	rettime = ktime_get();
+@@ -659,6 +664,8 @@
+ 	duration = (unsigned long long) ktime_to_ns(delta) >> 10;
+ 	printk(KERN_DEBUG "initcall %pF returned %d after %lld usecs\n", fn,
+ 		ret, duration);
++	flush_cache_all();
++	outer_flush_all();
+ 
+ 	return ret;
+ }

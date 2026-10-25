@@ -1,0 +1,4 @@
+#!/bin/sh
+# input: WPA connection events; output: lease lifecycle callbacks; pos: blocking wireless event monitor.
+set -eu
+exec /usr/sbin/wpa_cli -r -p /run/wpa_supplicant -i wlan0 -a /usr/bin/ocean-wifi-event -G 30
