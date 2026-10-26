@@ -38,7 +38,8 @@ def package(version):
         for name in names:
             copy(BUILD / folder / name, extension / 'payload/games' / folder / name)
     copy(ROOT / 'installer/install.py', stage / 'install.py')
-    copy(ROOT / 'docs/给AI的安装任务.md', stage / '给AI的安装任务.md')
+    guide = (ROOT / 'docs/给AI的安装任务.md').read_text()
+    (stage / '给AI的安装任务.md').write_text(guide.replace('(../README.md', '(README.md'))
     copy(ROOT / 'README.md', stage / 'README.md')
     for name in ['AGENTS.md', 'BUILD.md', 'docs/setup.md', 'docs/给AI的安装任务.md', 'docs/release-validation.md',
                  '.agents/skills/kindle-setup/SKILL.md', 'weread/BUILD.md', 'system/BUILD.md']:
