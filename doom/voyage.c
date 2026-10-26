@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <signal.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 static unsigned char *screen,*previous,*region;
 static unsigned char source_gray[DOOMGENERIC_RESX*DOOMGENERIC_RESY];
@@ -78,7 +80,27 @@ void DG_DrawFrame(void){
         last_stats=now;
     }
 }
+static int runtime_probe(void){
+    struct timespec now;int clock_ok=clock_gettime(CLOCK_MONOTONIC,&now)==0;
+    int fd[2],pipe_ok=pipe(fd)==0,fork_ok=0;
+    if(pipe_ok){
+        pid_t child=fork();
+        if(child==0){close(fd[0]);int ok=write(fd[1],"P",1)==1;close(fd[1]);_exit(ok?0:1);}
+        close(fd[1]);
+        if(child>0){
+            char byte=0;int status=0;
+            int read_ok=read(fd[0],&byte,1)==1&&byte=='P';
+            fork_ok=waitpid(child,&status,0)==child&&WIFEXITED(status)&&WEXITSTATUS(status)==0&&read_ok;
+        }
+        close(fd[0]);
+    }
+    int ok=clock_ok&&pipe_ok&&fork_ok;
+    printf("{\"program\":\"doom-voyage\",\"runtime\":%s,\"clock\":%s,\"pipe\":%s,\"fork\":%s}\n",
+      ok?"true":"false",clock_ok?"true":"false",pipe_ok?"true":"false",fork_ok?"true":"false");
+    return ok?0:1;
+}
 int main(int argc,char **argv){
+    if(argc==2&&!strcmp(argv[1],"--probe"))return runtime_probe();
     doomgeneric_Create(argc,argv);
     while(game_running)doomgeneric_Tick();
     fprintf(stderr,"DOOM_FINAL elapsed=%u frames=%u skipped=%u\n",DG_GetTicksMs()-start_ms,frames,skipped);

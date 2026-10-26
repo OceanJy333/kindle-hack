@@ -29,9 +29,9 @@ mkdir -p glibc-build
 cd glibc-build
 ../glibc-2.39/configure --host=arm-linux-gnueabihf --build="$(gcc -dumpmachine)" \
     --prefix=/usr --enable-kernel=3.0.0 --disable-werror --disable-nscd \
-    CC='arm-linux-gnueabihf-gcc -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard' \
-    CXX='arm-linux-gnueabihf-g++ -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard' \
+    CC='arm-linux-gnueabihf-gcc -march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard' \
+    CXX='arm-linux-gnueabihf-g++ -march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard' \
     CFLAGS='-O2 -g0' > /lab/native-runtime/configure.log 2>&1
-make -j4 > /lab/native-runtime/build.log 2>&1
+make -j"${JOBS:-2}" > /lab/native-runtime/build.log 2>&1
 make install DESTDIR=/lab/native-runtime/glibc-install > /lab/native-runtime/install.log 2>&1
 arm-linux-gnueabihf-readelf -n libc.so | tail -8

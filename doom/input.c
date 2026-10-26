@@ -15,7 +15,7 @@
 #include <signal.h>
 
 int game_running=1;
-static int touch=-1,keys=-1,slot,type_b;
+static int touch=-1,keys=-1,slot,type_b,single_touch,single_down;
 static void overlay_pause(int sig){
     (void)sig;if(touch>=0)ioctl(touch,EVIOCGRAB,0);if(keys>=0)ioctl(keys,EVIOCGRAB,0);
     game_display_pause(1);raise(SIGSTOP);game_display_pause(0);
@@ -47,22 +47,14 @@ static void key_up(unsigned char key){
     if(now-pressed_at[key]<100){deadline[key]=pressed_at[key]+100;return;}
     held[key]=0;deadline[key]=0;push(0,key);fprintf(stderr,"DOOM_KEY %u up\n",key);
 }
-static int open_named(const char *needle){
-    for(int i=0;i<16;i++){
-        char path[64],name[128]={0};snprintf(path,sizeof(path),"/dev/input/event%d",i);
-        int fd=open(path,O_RDONLY|O_NONBLOCK);if(fd<0)continue;
-        ioctl(fd,EVIOCGNAME(sizeof(name)),name);
-        if(strstr(name,needle)&&!ioctl(fd,EVIOCGRAB,1)){signal(SIGUSR1,overlay_pause);return fd;}
-        close(fd);
-    }
-    return -1;
-}
 int game_input_open(void){
     for(int i=0;i<TOUCH_SLOTS;i++){contacts[i].button=-1;contacts[i].id=-1;}
-    touch=open_named("cyttsp4_mt");keys=open_named("fsr_keypad");
+    touch=input_open_touch();keys=input_open_pagekeys();
+    if(touch>=0)signal(SIGUSR1,overlay_pause);
     unsigned char bits[(ABS_MAX+8)/8]={0};
     if(touch>=0)ioctl(touch,EVIOCGBIT(EV_ABS,sizeof(bits)),bits);
     type_b=!!(bits[ABS_MT_SLOT/8]&(1<<(ABS_MT_SLOT%8)));
+    single_touch=!(bits[ABS_MT_POSITION_X/8]&(1<<(ABS_MT_POSITION_X%8)));
     fprintf(stderr,"DOOM_INPUT touch=%d pagepress=%d protocol=%s\n",touch,keys,type_b?"TypeB":"TypeA");
     return touch<0?-1:0;
 }
@@ -75,7 +67,8 @@ static int at(int x,int y){
 }
 static void apply_contacts(void){
     for(int i=0;i<TOUCH_SLOTS;i++){
-        int next=contacts[i].down?at(contacts[i].x,contacts[i].y):-1,old=contacts[i].button;
+        int x,y;
+        int next=contacts[i].down&&input_to_logical(contacts[i].x,contacts[i].y,&x,&y)?at(x,y):-1,old=contacts[i].button;
         if(next==old)continue;
         if(old>=0&&game_buttons[old].key)key_up(game_buttons[old].key);
         contacts[i].button=next;
@@ -105,20 +98,22 @@ static void touch_events(void){
                 if(e.code==ABS_MT_POSITION_Y)contacts[slot].y=e.value;
                 if(e.code==ABS_MT_TRACKING_ID)contacts[slot].down=e.value>=0;
             }else{
-                if(e.code==ABS_MT_POSITION_X)packet_x=e.value;
-                if(e.code==ABS_MT_POSITION_Y)packet_y=e.value;
+                if(e.code==ABS_MT_POSITION_X||e.code==ABS_X)packet_x=e.value;
+                if(e.code==ABS_MT_POSITION_Y||e.code==ABS_Y)packet_y=e.value;
                 if(e.code==ABS_MT_TRACKING_ID)packet_id=e.value;
             }
         }
+        if(e.type==EV_KEY&&e.code==BTN_TOUCH&&single_touch)single_down=!!e.value;
         if(e.type==EV_KEY&&e.code==BTN_TOUCH&&!e.value){
             packet_id=-1;for(int i=0;i<TOUCH_SLOTS;i++){contacts[i].down=0;contacts[i].seen=0;}
         }
         if(e.type==EV_SYN&&e.code==SYN_DROPPED){
-            packet_id=-1;for(int i=0;i<TOUCH_SLOTS;i++){contacts[i].down=0;contacts[i].seen=0;}apply_contacts();
+            packet_id=-1;single_down=0;for(int i=0;i<TOUCH_SLOTS;i++){contacts[i].down=0;contacts[i].seen=0;}apply_contacts();
         }
         if(!type_b&&e.type==EV_SYN&&e.code==SYN_MT_REPORT)type_a_contact();
         if(e.type!=EV_SYN||e.code!=SYN_REPORT)continue;
         if(!type_b){
+            if(single_touch&&single_down)packet_id=0;
             type_a_contact();
             for(int i=0;i<TOUCH_SLOTS;i++){contacts[i].down=contacts[i].seen;contacts[i].seen=0;}
         }

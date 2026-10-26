@@ -19,7 +19,7 @@ class NativeScreen : public QObject {
  QQuickWindow *window;Desk *desk;int touch=-1,keys=-1;bool capturing=false,scheduled=false,sleeping=false,force=true,owned=true;
  QImage prior;QRect cleanArea;int large=0;
  void capture(){
-  scheduled=false;if(capturing||sleeping||(desk->gameActive()&&desk->notice().isEmpty()))return;
+  scheduled=false;if(capturing||sleeping||(desk&&desk->gameActive()&&desk->notice().isEmpty()))return;
   capturing=true;QImage image=window->grabWindow().convertToFormat(QImage::Format_Grayscale8);capturing=false;
   if(image.isNull()||image.width()!=display_width()||image.height()!=display_height())return;
   int left=image.width(),right=-1,top=image.height(),bottom=-1;
@@ -47,9 +47,10 @@ class NativeScreen : public QObject {
   int submitted=display_update(0,0,0,w,h,DISPLAY_CLEAN,reinterpret_cast<const uint8_t*>(gray.constData()));
   int completed=submitted?submitted:display_wait();
   qInfo("POWER_SCREEN submitted=%d completed=%d errno=%d",submitted,completed,completed?errno:0);
-  if(!completed)desk->power()->send("ready");
+  if(!completed&&desk)desk->power()->send("ready");
  }
  void ownership(){
+  if(!desk)return;
   bool wants=!desk->gameActive()||!desk->notice().isEmpty();
   if(!wants&&owned){ioctl(touch,EVIOCGRAB,0);ioctl(keys,EVIOCGRAB,0);owned=false;}
   else if(wants&&!owned){QTimer::singleShot(250,this,[this]{
@@ -57,9 +58,9 @@ class NativeScreen : public QObject {
   });}
  }
 public:
- NativeScreen(QQuickWindow *w,Desk *d):QObject(w),window(w),desk(d){
+ NativeScreen(QQuickWindow *w,Desk *d=nullptr):QObject(w),window(w),desk(d){
   if(display_open())qFatal("Cannot open e-ink framebuffer");
-  touch=touch_open();keys=::open("/dev/input/event2",O_RDONLY|O_NONBLOCK|O_CLOEXEC);
+  touch=touch_open();keys=input_open_pagekeys();
   if(touch<0)qFatal("Cannot open touch device");if(keys>=0)ioctl(keys,EVIOCGRAB,1);
   auto tn=new QSocketNotifier(touch,QSocketNotifier::Read,this);
   connect(tn,&QSocketNotifier::activated,this,[this]{int x,y;while(touch_read(touch,&x,&y)){
@@ -72,14 +73,17 @@ public:
    if(key){QKeyEvent down(QEvent::KeyPress,key,Qt::NoModifier),up(QEvent::KeyRelease,key,Qt::NoModifier);QCoreApplication::sendEvent(window,&down);QCoreApplication::sendEvent(window,&up);}
   }});}
   connect(window,&QQuickWindow::afterRendering,this,[this]{schedule();},Qt::DirectConnection);
+  if(desk){
   connect(desk,&Desk::changed,this,[this]{ownership();});
   connect(desk->power(),&PowerClient::lockedChanged,this,[this](bool locked){
    if(locked)QTimer::singleShot(desk->gameActive()?250:0,this,[this]{if(desk->power()->locked())lock();});
    else {sleeping=false;force=true;schedule();}
   });
   if(desk->power()->locked())lock();
+  }
   QTimer::singleShot(500,this,[this]{schedule();});
  }
+ void stopUpdates(){sleeping=true;ioctl(touch,EVIOCGRAB,0);if(keys>=0)ioctl(keys,EVIOCGRAB,0);owned=false;}
  void clean(QRect rect=QRect()){if(rect.isEmpty())force=true;else cleanArea=cleanArea.united(rect);schedule();}
  ~NativeScreen(){::close(touch);if(keys>=0)::close(keys);display_close();}
 };

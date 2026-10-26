@@ -18,7 +18,8 @@ Window {
         visible: window.mode === "reader"
         LoginPage { anchors.fill: parent; visible: appController.currentPage === "login" }
         Shelf { anchors.fill: parent; visible: appController.currentPage === "bookshelf" && !window.offlinePanelVisible
-            onOfflineRequested: window.offlinePanelVisible = true }
+            onOfflineRequested: window.offlinePanelVisible = true
+            onExitRequested: appController.exitApp() }
         OfflinePanel { anchors.fill: parent; visible: window.offlinePanelVisible && appController.currentPage === "bookshelf"
             onClose: window.offlinePanelVisible = false }
     }

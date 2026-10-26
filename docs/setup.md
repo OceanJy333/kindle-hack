@@ -1,82 +1,78 @@
 # 设置 Kindle
 
-## 准备
+## 安装
 
-确认 Kindle 的准确型号和固件。原厂系统可在「设置 → 设备选项 → 设备信息」查看；连接成功后补查 `uname -a`、`uname -m` 和系统挂载。电脑需要 Git，以及 [BUILD.md](../BUILD.md) 中目标模块的工具。
+1. 已越狱并安装 KUAL；缺少这一步时按 [KindleModding 官方向导](https://kindlemodding.org/jailbreak-wizard.html)完成对应的越狱和越狱后设置。
+2. 从[最新 Release](https://github.com/OceanJy333/kindle-hack/releases/latest)下载 `kindle-hack-ai-kit.zip` 和 `SHA256SUMS`。核对 ZIP 的 SHA-256 后解压，把里面的 `extensions` 合并复制到 Kindle USB 根目录。
+3. 安全弹出 Kindle、拔 USB，点 **KUAL → Ocean → 安装 / 检查**。检查完成后从 Ocean 菜单打开需要的功能。
 
-**先完成越狱。** [KindleModding 越狱向导](https://kindlemodding.org/jailbreak-wizard.html) 按序列号前 8 位、固件版本、注册与广告状态选择方法。需要识别机型时提供序列号前缀即可。
+复制后应有 `Kindle USB 根目录/extensions/ocean/menu.json`，不要多套一层 `kindle-hack-ai-kit/`。全程可保留原厂系统。想交给电脑上的 AI，直接复制[给 AI 的安装任务](给AI的安装任务.md)。
 
-2026-10-26 查阅的 [WinterBreak 项目指南](https://kindlemodding.org/jailbreaking/WinterBreak/)要求已注册的受支持机型、固件和 Wi-Fi，并明确不支持 `5.18.1` 及之后的固件。具体方法按当前向导结果执行。按所选指南完成越狱后的软件与更新管理，再准备 root 启动入口和 SSH。
+## 使用
 
-## 按当前系统选择入口
-
-| 当前状态 | 下一步 |
+| KUAL → Ocean 菜单 | 操作 |
 | --- | --- |
-| 原厂系统，未越狱 | 按机型与固件完成越狱向导，再回来安装应用 |
-| 原厂系统，已越狱 | 接通 root SSH；构建原生运行包；先手动启动所选功能 |
-| 已运行 Ocean Voyage 独立系统 | 检查内核、`/opt/ocean`、`/tmp/weread-native` 和现有服务；按该布局更新对应程序 |
-| 其他 Kindle 型号 | 先核对 CPU、显示 ioctl、触摸设备、分辨率、库和固件；据此移植 |
-| 想自行换系统 | 单独阅读 `system/` 构建与启动代码，确定设备专用镜像、面板数据和恢复入口后制定刷写任务 |
+| 安装 / 检查 | 识别设备、检查显示和输入、执行运行库探针，生成结果 |
+| 微信读书 | 扫码登录自己的账号，打开书架和阅读器 |
+| DOOM | 打开用户提供的 `games/doom1.wad` |
+| Neo Geo · 合金弹头 | 打开用户提供的 `games/roms/mslug.zip`，同目录需有 `neogeo.zip`；匹配 FBA v0.2.97.29 |
+| 返回原厂桌面 | 结束应用并回原厂 |
+| 查看状态 | 查看最近一次检查结果的位置 |
+| 卸载（保留账号和存档） | 删除 Ocean 程序，保留账号、书库和游戏数据 |
 
-## 建立连接
+以上 `games/` 路径都相对 Kindle USB 根目录。WAD、ROM 和 BIOS 不随发行包提供。程序保留原厂电源服务；按电源键休眠会结束当前应用，唤醒回原厂，需要时重新从 KUAL 打开。该行为待实机验证。
 
-使用自己设备上已启用的 SSH。电脑生成自己的密钥，只将公钥放到 Kindle。首次连接核对设备显示或现场取得的主机指纹。
+## 兼容检查
+
+安装器自动读型号前缀、固件和内核，并选择 profile（设备配置）。显示和输入探针通过后才开放程序启动。
+
+| 机型 | 结果范围 |
+| --- | --- |
+| PW1 | 独立游戏候选；必须通过设备本机的静态运行、显示和输入探针。Linux 2.6.31 无法运行当前最低要求 Linux 3.0 的 Qt 阅读器，报告 `reader_runtime_unavailable` |
+| PW2、PW3、Voyage | 显示、触摸与运行库预适配；本轮包待各型号实机验证 |
+| 未知 profile | 报告 `unsupported_device_profile`，保留探针信息 |
+| profile 已知、内核不匹配 | 报告 `unsupported_kernel`；PW1 接受 `2.6.31`，PW2 / PW3 / Voyage 接受 `3.0.35`，均接受版本后缀 |
+
+应用用 1072 × 1448 逻辑画布，按实际屏幕缩放；显示后端处理 8 / 16 bpp（每像素位数），触摸和 PagePress 翻页键按设备能力发现。预适配与探针结果不等于各固件实机通过。
+
+## 检查结果
+
+再次用 USB 连接 Kindle，打开 `ocean/state/status.json`。`reader`、`doom`、`neogeo` 分别报告各功能状态；`ready` 表示检查已通过，可以进行实测。状态与错误的固定处理见[给 AI 的安装任务](给AI的安装任务.md#状态与下一步)。
+
+| USB 根目录下的位置 | 内容 |
+| --- | --- |
+| `extensions/ocean/` | KUAL 扩展、程序和公共 Qt 运行库 |
+| `ocean/state/status.json` | 最近一次设备检查结果 |
+| `ocean/state/device.json`、`probe.json`、`probe.log` | 设备识别、显示、输入和静态运行探针 |
+| `ocean/state/reader-probe.json`、`reader-probe.log` | Qt 本地运行检查 |
+| `ocean/state/doom-probe.log`、`neogeo-probe.log` | 游戏静态运行检查 |
+| `ocean/state/session.json`、`app.log`、`sleep.log` | 最近一次应用会话、退出和休眠事件 |
+| `ocean/state/weread/` | 阅读器账号和本地状态 |
+| `weread-offline/` | 离线书库 |
+| `games/` | 使用者提供的游戏数据、配置和存档 |
+
+设备侧这些路径位于 `/mnt/us/` 下。卸载删除 `extensions/ocean/`，保留 `ocean/`、`weread-offline/` 和 `games/`。
+
+## 电脑命令
+
+电脑有 Python 3 时，在解压后的发行包根目录运行；USB 路径由操作 AI 自行识别。macOS 示例：
 
 ```sh
-ssh-keygen -t ed25519 -f ~/.ssh/kindle
-ssh -i ~/.ssh/kindle -p <端口> root@<Kindle地址>
+python3 install.py install --kindle /Volumes/Kindle --json
+python3 install.py verify --kindle /Volumes/Kindle --json
+python3 install.py status --kindle /Volumes/Kindle --json
 ```
 
-尖括号内容替换为实际值。端口、USB 网络地址和 Wi-Fi 地址以自己的 SSH 设置为准。把它们填入仓库连接脚本支持的参数，或直接用 `ssh` / `scp`。
+Windows 可用 `py -3` 代替 `python3`，`--kindle` 使用实际盘符。`verify` 检查文件完整性；它不替代 Kindle 上的 KUAL 检查。源码工作区的同一入口为 `python3 installer/install.py`，需要已组装的完整 payload。
 
-原厂越狱系统也保留了 `native/physical-bootstrap.sh` 的 Ocean Connect 入口。它由现有 root 启动器执行，读取以下设备文件：
-
-| 设备路径 | 内容 |
-| --- | --- |
-| `/mnt/us/ocean-install/ssh/dropbear`、`dropbearkey` | 能在该原厂系统直接执行的 ARM SSH 程序 |
-| `/mnt/us/ocean-install/ssh/authorized_keys` | 自己电脑的公钥 |
-| `/mnt/us/ocean-install/board-host` | 允许连接的电脑局域网 IPv4 地址 |
-
-运行后 SSH 监听 2222，设备信息写到 `/mnt/us/ocean-install/physical-inventory.txt`。独立系统的 `system/build-ssh.py` 产物使用新系统运行库；原厂系统须先核对动态加载器和依赖。
-
-连接后先读取这些信息：
+电脑卸载命令：
 
 ```sh
-uname -a
-uname -m
-cat /proc/mounts
-cat /proc/bus/input/devices
-ls /sys/class/graphics/
-ls /sys/class/power_supply/
+python3 install.py uninstall --kindle /Volumes/Kindle --json
 ```
 
-Voyage 的起始适配为 1072 × 1448、ARMv7。自编内核版本为 `3.0.35-ocean-voyage`。内核版本与程序安装位置一起决定启动方式。
+## 实测
 
-## 构建并安装需要的功能
+设备检查通过后，逐项记录实际结果：阅读器扫码、开书、翻页、返回；游戏开始、触摸操作、退出；电源键休眠后唤醒；重启后再次从 KUAL 打开。手机与 Kindle 的阅读进度同步、离线阅读等功能分别实测。复制完成、探针通过和设备实测分开报告。
 
-依 [BUILD.md](../BUILD.md) 准备外部输入并构建。只构建用户选择的模块。先检查每个启动脚本读写的路径，再复制产物。
-
-| 目标 | 源码入口与数据位置 |
-| --- | --- |
-| 原生桌面 | `native/`；原厂系统启动脚本为 `native/device-start.sh` 和 `native/physical-desktop.sh` |
-| 微信读书 | `weread/official/port/`；运行包由 `weread/official/package-native-runtime.py` 生成 |
-| DOOM | `doom/build.py`、`doom/launch.sh`；需已安装阅读器运行包，游戏数据由使用者提供 |
-| 合金弹头 | `arcade/build.py`；资源放设备 `/mnt/us/games/roms/`，需匹配 FBA v0.2.97.29 |
-| 共用游戏启动与刷新 | `games/launch.sh`、`games/native-launch.sh`、`games/display-worker.c` |
-| 独立系统 | `system/`；根文件系统内的应用位于 `/opt/ocean` |
-
-原厂系统的旧布局将 `native-runtime.ext2` 放到 `/mnt/us/`，把 `native/device-start.sh` 放到 `/mnt/us/ocean-install/device-start.sh`。现有 root 启动器可执行 `native/physical-desktop.sh` 打开桌面；它读取同目录的 `board-host`。`device-start.sh` 挂载运行包到 `/var/tmp/weread-native`，建立 `/tmp/weread-native` 链接，并停止原厂桌面与电源服务后启动本项目服务。
-
-独立系统的 `/tmp/weread-native` 通常指向 `/opt/ocean`。让 AI 检查现有挂载和启动脚本，选择对应布局。
-
-先手动运行，验证后再添加本机支持的启动入口。确认入口从重启后的系统也能打开，再记为安装完成。
-
-## 验证
-
-- **微信读书**：设备扫码登录；打开书籍、翻页；查段落评论；手机与 Kindle 各改一次阅读位置；下载自己可读的章节后断网再打开。
-- **游戏**：开始、移动、射击、组合按键、退出返回；实看运动清晰度与残影。供帧频率、驱动完成次数和屏幕可见帧率分别记录。
-- **桌面**：触摸、亮度、电量、休眠与唤醒；如接电脑看板，再查任务状态回传。
-
-扫码登录、实体按键、屏幕观感和断电 / 重启体验需要用户在设备旁配合。AI 可完成本地构建、文件传输、配置和日志检查。
-
-若微信读书 HTTPS 连接失败，检查设备时钟、运行包中的 `ca-certificates.crt`，以及 `weread/official/port/main.cpp` 是否实际加载它。当前源码含修复，需重新构建并确认设备加载的是新版。`system/shoot-overlay.sh` 的 `/tmp` 覆盖重启后消失；日常安装应将 CA 加载修复编译进实际启动的运行包或系统产物。
+源码构建、旧私有运行包和 Voyage 独立系统见 [BUILD.md](../BUILD.md)。

@@ -1,9 +1,9 @@
-// input: 8-bit gray pixels and evdev events; output: EPDC refresh and normalized taps; pos: Kindle driver.
+// input: logical grayscale canvas; output: model-selected EPDC updates; pos: Kindle framebuffer boundary.
 #include "display.h"
 #include <linux/fb.h>
-#include <linux/input.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/utsname.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -11,158 +11,103 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <time.h>
-#include <signal.h>
 
-// PW2 Linux 3.0.35 ABI; see FBInk eink/mxcfb-kindle.h (source recorded in README).
-struct rect { uint32_t top, left, width, height; };
-struct alt { uint32_t addr, width, height; struct rect region; };
-struct update {
-    struct rect region;
-    uint32_t waveform, mode, marker, bw_waveform, gray_waveform;
-    int32_t temp;
-    uint32_t flags;
-    struct alt alternate;
-};
-static int fb = -1;
-static uint8_t *memory;
+// Linux UAPI layout, checked against Amazon's headers consolidated in
+// https://github.com/NiLuJe/FBInk/blob/master/eink/mxcfb-kindle.h . No FBInk code is linked.
+// PW1 (FW >= 5.1) and PW2/3/Voyage share SEND; PW1's completion ioctl is different.
+struct rect { uint32_t top,left,width,height; };
+struct alt { uint32_t addr,width,height;struct rect region; };
+struct update { struct rect region;uint32_t waveform,mode,marker,bw_waveform,gray_waveform;int32_t temp;uint32_t flags;struct alt alternate; };
+struct completion { uint32_t marker,collision; };
+_Static_assert(sizeof(struct update)==72,"Kindle EPDC send ABI");
+_Static_assert(sizeof(struct completion)==8,"Carta completion ABI");
+static int fb=-1,pearl;
+static uint8_t *memory,*canvas;
 static struct fb_fix_screeninfo fix;
 static struct fb_var_screeninfo var;
-static struct input_absinfo range_x, range_y;
-static int touch_x, touch_y;
+static struct display_geometry geometry;
+static struct display_format format;
 static uint32_t submitted_marker;
 
-int display_open(void) {
-    fb = open("/dev/fb0", O_RDWR | O_CLOEXEC);
-    if (fb < 0 || ioctl(fb, FBIOGET_FSCREENINFO, &fix) || ioctl(fb, FBIOGET_VSCREENINFO, &var)) return -1;
-    if (var.bits_per_pixel != 8 || !var.xres || !var.yres) { errno = ENOTSUP; return -1; }
-    memory = mmap(NULL, fix.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
-    if (memory == MAP_FAILED) return -1;
-    fprintf(stderr, "DISPLAY %ux%u stride=%u bpp=%u offset=%u,%u\n", var.xres, var.yres, fix.line_length, var.bits_per_pixel, var.xoffset, var.yoffset);
+const struct display_geometry *display_geometry(void){return &geometry;}
+int display_width(void){return DISPLAY_WIDTH;}
+int display_height(void){return DISPLAY_HEIGHT;}
+static int select_profile(void){
+    struct utsname kernel={0};uname(&kernel);
+    const char *profile=getenv("OCEAN_DEVICE_PROFILE");
+    if(profile&&*profile){
+        if(!strcmp(profile,"pw1"))pearl=1;
+        else if(!strcmp(profile,"pw2")||!strcmp(profile,"pw3")||!strcmp(profile,"voyage"))pearl=0;
+        else {errno=ENOTSUP;return -1;}
+    }else{
+        // These kernels distinguish the mx50 Pearl and mx6sl Carta driver generations.
+        if(strncmp(fix.id,"mxc_epdc_fb",11)){errno=ENOTSUP;return -1;}
+        if(!strncmp(kernel.release,"2.6.31",6)){profile="pw1";pearl=1;}
+        else if(!strncmp(kernel.release,"3.0.35",6)){profile="pw2/pw3/voyage";pearl=0;}
+        else {errno=ENOTSUP;return -1;}
+    }
+    fprintf(stderr,"DISPLAY_PROFILE %s kernel=%s fb=%.16s completion=%s\n",profile,kernel.release,fix.id,pearl?"pearl":"carta");return 0;
+}
+int display_open(void){
+    fb=open("/dev/fb0",O_RDWR|O_CLOEXEC);
+    if(fb<0)return -1;
+    if(ioctl(fb,FBIOGET_FSCREENINFO,&fix)||ioctl(fb,FBIOGET_VSCREENINFO,&var))goto fail;
+    if((var.bits_per_pixel!=8&&var.bits_per_pixel!=16)||display_geometry_init(&geometry,var.xres,var.yres)){errno=ENOTSUP;goto fail;}
+    format=(struct display_format){var.bits_per_pixel,var.red.offset,var.red.length,var.green.offset,var.green.length,var.blue.offset,var.blue.length,var.grayscale==2};
+    if(var.bits_per_pixel==16&&(!var.green.length||var.red.offset+var.red.length>16||var.green.offset+var.green.length>16||var.blue.offset+var.blue.length>16)){errno=ENOTSUP;goto fail;}
+    if((size_t)(var.xres+var.xoffset)*(var.bits_per_pixel/8)>fix.line_length||(size_t)(var.yres+var.yoffset)*fix.line_length>fix.smem_len){errno=EINVAL;goto fail;}
+    if(select_profile())goto fail;
+    memory=mmap(NULL,fix.smem_len,PROT_READ|PROT_WRITE,MAP_SHARED,fb,0);
+    if(memory==MAP_FAILED){memory=NULL;goto fail;}
+    canvas=malloc(DISPLAY_WIDTH*DISPLAY_HEIGHT);if(!canvas)goto fail;
+    // Start with the visible screen, so a notification can restore what was under it.
+    display_geometry_capture(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset,canvas);
+    fprintf(stderr,"DISPLAY %ux%u stride=%u bpp=%u offset=%u,%u canvas=%dx%d viewport=%d,%d,%d,%d\n",var.xres,var.yres,fix.line_length,var.bits_per_pixel,var.xoffset,var.yoffset,DISPLAY_WIDTH,DISPLAY_HEIGHT,geometry.x,geometry.y,geometry.w,geometry.h);
     return 0;
+fail:{int error=errno;display_close();errno=error;return -1;}
 }
-
-int display_width(void) { return var.xres; }
-int display_height(void) { return var.yres; }
-
-int display_update(uint32_t seq, int x, int y, int w, int h, int full, const uint8_t *pixels) {
-    return display_update_stride(seq, x, y, w, h, full, pixels, w > 0 ? (size_t)w : 0);
+int display_update(uint32_t seq,int x,int y,int w,int h,int full,const uint8_t *pixels){
+    return display_update_stride(seq,x,y,w,h,full,pixels,w>0?(size_t)w:0);
 }
-
-int display_update_stride(uint32_t seq, int x, int y, int w, int h, int full, const uint8_t *pixels, size_t pitch) {
-    if (fb < 0 || !pixels || pitch < (size_t)w || x < 0 || y < 0 || w <= 0 || h <= 0 || (uint32_t)x + w > var.xres || (uint32_t)y + h > var.yres) {
-        errno = EINVAL; return -1;
-    }
-    for (int row = 0; row < h; row++)
-        memcpy(memory + (y + row + var.yoffset) * fix.line_length + x + var.xoffset, pixels + row * pitch, w);
-    return display_refresh(seq, x, y, w, h, full);
+int display_update_stride(uint32_t seq,int x,int y,int w,int h,int full,const uint8_t *pixels,size_t pitch){
+    struct display_rect r;
+    if(fb<0||!pixels||w<=0||pitch<(size_t)w||display_geometry_rect(&geometry,x,y,w,h,&r)){errno=EINVAL;return -1;}
+    display_canvas_write(canvas,x,y,w,h,pixels,pitch);
+    if(x==0&&y==0&&w==DISPLAY_WIDTH&&h==DISPLAY_HEIGHT)display_geometry_clear_margins(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset);
+    display_geometry_render(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset,canvas,r);
+    return display_refresh(seq,x,y,w,h,full);
 }
-
-int display_refresh(uint32_t seq, int x, int y, int w, int h, int full) {
-    if (fb < 0 || x < 0 || y < 0 || w <= 0 || h <= 0 || (uint32_t)x + w > var.xres || (uint32_t)y + h > var.yres) {
-        errno = EINVAL; return -1;
-    }
-    // Markers are device-unique: desk and reader sequences restart and overlap, and a reused marker
-    // made the completion wait hang for the driver's 20 s timeout, freezing touch and the link.
-    static uint32_t marker;
-    (void)seq;
-    struct update u = {0};
-    u.region = (struct rect){ y, x, w, h };
-    u.waveform = full == DISPLAY_FAST_MONO ? 4 : full == DISPLAY_MONO ? 1 : full ? 2 : 257;
-    if(full == DISPLAY_FAST_MONO)u.flags=0x02; // Kernel A2 monochrome waveform. // GC16 on full refresh; driver chooses waveform for a partial region.
-    // AUTO uses these histogram choices; zero is INIT and can cause repeated flashing.
-    u.bw_waveform = 1; // DU for the existing black/white dithered game pixels.
-    u.gray_waveform = 2; // Preserve GC16 grayscale fidelity on desktop/reader regions.
-    u.mode = full == DISPLAY_CLEAN ? 1 : 0; // 2: reader GC16 regional refresh, without a full-screen flash.
-    u.marker = ++marker ? marker : ++marker;
-    u.temp = 0x1001; // PW2/KV TEMP_USE_AUTO, matching the stock temperature selection.
-    // Submit only: the EPDC queues and merges updates itself, and the loop must stay responsive.
-    if(ioctl(fb, _IOW('F', 0x2e, struct update), &u)<0)return -1;
-    submitted_marker=u.marker;
-    // Opt-in measurement only: wait for this driver's completion marker, not a TCP ACK.
-    if(getenv("DISPLAY_SYNC")){
-        struct timespec a,b;struct {uint32_t marker,collision;} done={u.marker,0};
-        clock_gettime(CLOCK_MONOTONIC,&a);
-        int result=ioctl(fb,_IOWR('F',0x2f,typeof(done)),&done);
-        clock_gettime(CLOCK_MONOTONIC,&b);
-        long long elapsed=(b.tv_sec-a.tv_sec)*1000000LL+(b.tv_nsec-a.tv_nsec)/1000;
-        fprintf(stderr,"DISPLAY_COMPLETE marker=%u wait_us=%lld result=%d\n",u.marker,elapsed,result);
-        if(result<0)return -1;
-    }
-    return 0;
-}
-
-int display_wait(void) {
+int display_wait(void){
     if(fb<0||!submitted_marker)return 0;
-    struct {uint32_t marker,collision;} done={submitted_marker,0};
-    // This driver returns remaining timeout ticks on success, not necessarily zero.
-    return ioctl(fb,_IOWR('F',0x2f,typeof(done)),&done)<0?-1:0;
+    if(pearl){uint32_t marker=submitted_marker;return ioctl(fb,_IOW('F',0x2f,uint32_t),&marker)<0?-1:0;}
+    struct completion done={submitted_marker,0};
+    // Success may be remaining timeout ticks rather than zero.
+    return ioctl(fb,_IOWR('F',0x2f,struct completion),&done)<0?-1:0;
 }
-
-static int owned_touch=-1;
-static void overlay_pause(int sig) {
-    (void)sig;
-    if(owned_touch>=0)ioctl(owned_touch,EVIOCGRAB,0);
-    raise(SIGSTOP);
-    if(owned_touch>=0)ioctl(owned_touch,EVIOCGRAB,1);
-}
-int touch_open(void) {
-    char path[64], name[128];
-    for (int i = 0; i < 16; i++) {
-        snprintf(path, sizeof(path), "/dev/input/event%d", i);
-        int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-        if (fd < 0) continue;
-        memset(name, 0, sizeof(name));
-        ioctl(fd, EVIOCGNAME(sizeof(name)), name);
-        if (strstr(name, "cyttsp") && !ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &range_x)
-            && !ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &range_y)) {
-            touch_x = range_x.value; touch_y = range_y.value;
-            if(!getenv("NOTIFY_INPUT")){
-                if (ioctl(fd, EVIOCGRAB, 1)) { close(fd); return -1; }
-                owned_touch=fd;signal(SIGUSR1,overlay_pause);
-            }
-            fprintf(stderr, "TOUCH %s %s x=%d..%d y=%d..%d\n", path, name, range_x.minimum, range_x.maximum, range_y.minimum, range_y.maximum);
-            return fd;
-        }
-        close(fd);
-    }
-    return -1;
-}
-
-int touch_read(int fd, int *x, int *y) {
-    static int down, release, seen;
-    struct input_event e;
-    while (read(fd, &e, sizeof(e)) == sizeof(e)) {
-        if (e.type == EV_ABS && e.code == ABS_MT_POSITION_X) touch_x = e.value;
-        if (e.type == EV_ABS && e.code == ABS_MT_POSITION_Y) touch_y = e.value;
-        if (e.type == EV_ABS && e.code == ABS_MT_TRACKING_ID) {
-            if (e.value >= 0) {
-                int xs[2] = { ABS_MT_POSITION_X, touch_x }, ys[2] = { ABS_MT_POSITION_Y, touch_y };
-                if (!ioctl(fd, EVIOCGMTSLOTS(sizeof(xs)), xs)) touch_x = xs[1];
-                if (!ioctl(fd, EVIOCGMTSLOTS(sizeof(ys)), ys)) touch_y = ys[1];
-                down = 1; seen = 1;
-            } else release = down;
-        }
-        if (e.type == EV_KEY && e.code == BTN_TOUCH) {
-            if (e.value) { down = 1; seen = 1; } else release = down;
-        }
-        if (e.type == EV_SYN && e.code == SYN_REPORT && release && seen) {
-            *x = (touch_x - range_x.minimum) * (int)(var.xres - 1) / (range_x.maximum - range_x.minimum);
-            *y = (touch_y - range_y.minimum) * (int)(var.yres - 1) / (range_y.maximum - range_y.minimum);
-            down = release = seen = 0;
-            fprintf(stderr, "TAP %d %d raw=%d,%d\n", *x, *y, touch_x, touch_y);
-            return 1;
-        }
+int display_refresh(uint32_t seq,int x,int y,int w,int h,int full){
+    struct display_rect r;
+    if(fb<0||display_geometry_rect(&geometry,x,y,w,h,&r)){errno=EINVAL;return -1;}
+    if(!r.w||!r.h)return 0;
+    if(x==0&&y==0&&w==DISPLAY_WIDTH&&h==DISPLAY_HEIGHT)r=(struct display_rect){0,0,geometry.width,geometry.height};
+    static uint32_t marker;(void)seq;
+    struct update u={0};u.region=(struct rect){r.y,r.x,r.w,r.h};
+    u.waveform=full==DISPLAY_FAST_MONO?4:full==DISPLAY_MONO?1:full?2:257;
+    u.flags=full==DISPLAY_FAST_MONO?0x02:0;u.bw_waveform=1;u.gray_waveform=2;
+    u.mode=full==DISPLAY_CLEAN?1:0;u.marker=++marker?marker:++marker;u.temp=0x1001;
+    if(ioctl(fb,_IOW('F',0x2e,struct update),&u)<0)return -1;
+    submitted_marker=u.marker;
+    if(getenv("DISPLAY_SYNC")){
+        struct timespec a,b;clock_gettime(CLOCK_MONOTONIC,&a);int result=display_wait();clock_gettime(CLOCK_MONOTONIC,&b);
+        long long elapsed=(b.tv_sec-a.tv_sec)*1000000LL+(b.tv_nsec-a.tv_nsec)/1000;
+        fprintf(stderr,"DISPLAY_COMPLETE marker=%u wait_us=%lld result=%d\n",u.marker,elapsed,result);return result;
     }
     return 0;
 }
-
-int display_copy(uint8_t *pixels) {
-    if(fb<0 || !pixels)return -1;
-    for(unsigned y=0;y<var.yres;y++)memcpy(pixels+y*var.xres,memory+(y+var.yoffset)*fix.line_length+var.xoffset,var.xres);
-    return 0;
+int display_copy(uint8_t *pixels){
+    if(fb<0||!pixels)return -1;
+    display_geometry_capture(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset,pixels);return 0;
 }
-
-void display_close(void) {
-    if (memory && memory != MAP_FAILED) munmap(memory, fix.smem_len);
-    if (fb >= 0) close(fb);
+void display_close(void){
+    free(canvas);canvas=NULL;if(memory)munmap(memory,fix.smem_len);memory=NULL;
+    if(fb>=0)close(fb);fb=-1;submitted_marker=0;
 }

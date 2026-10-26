@@ -16,6 +16,8 @@
 
 获取入口是 `python3 tools/fetch-deps.py`；依赖 URL 与 SHA-256 记录在 [dependencies.json](tools/dependencies.json)。系统与 Qt 依赖使用各自的构建入口。
 
-Amazon 固件、官方微信读书安装包及提取资源由使用者自行提供。仓库只保留资源提取和补丁工具，以及作者自行编写的 Qt/QML 界面与适配。`patch_qml.py` 需要用户本地提取出的资源；提取产物留在 `build/`。
+公共阅读器使用作者编写的 Qt/QML 界面。`package-public-runtime.py` 组装公共运行目录，不需要微信读书官方安装包、QML、图标或提取资源。发行包中的 Qt、glibc、OpenSSL 及其依赖以动态库形式提供，可在 `extensions/ocean/payload/runtime/` 替换。运行目录的 `licenses/debian/` 保留所用 Debian 包的 copyright / 许可声明；对应依赖来源、固定版本和重建方法见 [weread/BUILD.md](weread/BUILD.md)，Release 同时提供 `kindle-hack-sources.tar.gz` 源码附件。
+
+旧私有阅读器和独立系统实验保留官方资源提取及补丁工具。该路线的 Amazon 固件、微信读书官方安装包及提取资源由使用者自行提供，提取产物留在本地 `build/`。`patch_qml.py` 仅用于这条私有构建路线。
 
 DOOM WAD、合金弹头 ROM、Neo Geo BIOS 不随仓库提供。构建游戏前端不需要这些游戏数据，运行时由使用者自行放入文档指定目录。游戏商标与内容归各自权利人所有。

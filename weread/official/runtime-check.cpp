@@ -7,6 +7,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QSslSocket>
+#include <QSslCertificate>
+#include <QSslConfiguration>
 #include <QTemporaryFile>
 #include <QThread>
 #include <QTimer>
@@ -17,6 +19,10 @@
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+    const bool localOnly = app.arguments().contains("--local");
+    auto ssl = QSslConfiguration::defaultConfiguration();
+    ssl.setCaCertificates(QSslCertificate::fromPath(app.applicationDirPath() + "/ca-certificates.crt"));
+    QSslConfiguration::setDefaultConfiguration(ssl);
     QJsonObject result{{"qt", qVersion()}, {"epochMs", QDateTime::currentMSecsSinceEpoch()}};
     unsigned char first[32], second[32];
     arc4random_buf(first, sizeof(first));
@@ -29,20 +35,25 @@ int main(int argc, char **argv) {
     result["file"] = fileOk && file.readAll() == sample;
     result["tlsAvailable"] = QSslSocket::supportsSsl();
     result["tlsLibrary"] = QSslSocket::sslLibraryVersionString();
-    QTimer::singleShot(20, &app, [&] { result["timer"] = true; });
+    auto finishLocal = [&] {
+        if (localOnly && result["timer"].toBool() && result["thread"].toBool()) app.quit();
+    };
+    QTimer::singleShot(20, &app, [&] { result["timer"] = true; finishLocal(); });
     auto worker = QThread::create([&] {
-        QMetaObject::invokeMethod(&app, [&] { result["thread"] = true; }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(&app, [&] { result["thread"] = true; finishLocal(); }, Qt::QueuedConnection);
     });
     worker->start();
     QNetworkAccessManager network;
-    auto reply = network.get(QNetworkRequest(QUrl("https://ink.qq.com/")));
-    QObject::connect(reply, &QNetworkReply::finished, &app, [&] {
+    if (!localOnly) {
+      auto reply = network.get(QNetworkRequest(QUrl("https://ink.qq.com/")));
+      QObject::connect(reply, &QNetworkReply::finished, &app, [&, reply] {
         result["httpsStatus"] = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         result["httpsBytes"] = reply->readAll().size();
         result["httpsError"] = reply->errorString();
         result["https"] = reply->error() == QNetworkReply::NoError;
         QTimer::singleShot(50, &app, &QCoreApplication::quit);
-    });
+      });
+    }
     QTimer::singleShot(15000, &app, &QCoreApplication::quit);
     app.exec();
     worker->wait();
@@ -50,8 +61,10 @@ int main(int argc, char **argv) {
     struct rusage usage{};
     getrusage(RUSAGE_SELF, &usage);
     result["peakRssKB"] = qint64(usage.ru_maxrss);
+    const bool localOk = result["file"].toBool() && result["timer"].toBool()
+        && result["thread"].toBool() && result["entropy"].toBool() && result["tlsAvailable"].toBool();
+    result["localRuntime"] = localOk;
     auto json = QJsonDocument(result).toJson();
     std::fwrite(json.constData(), 1, json.size(), stdout);
-    return result["file"].toBool() && result["timer"].toBool()
-        && result["thread"].toBool() && result["https"].toBool() && result["entropy"].toBool() ? 0 : 1;
+    return localOk && (localOnly || result["https"].toBool()) ? 0 : 1;
 }

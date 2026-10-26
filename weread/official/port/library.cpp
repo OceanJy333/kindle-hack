@@ -2,6 +2,7 @@
 #include "library.h"
 #include "offline-store.h"
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QFile>
@@ -58,7 +59,24 @@ void Library::logout() {
     ++syncGeneration; syncBusy=false; pauseDownload(); ++readGeneration; cancelLogin(); sessionVid.clear(); accessToken.clear(); refreshToken.clear();
     QFile::remove(directory + "/session-port.json"); page = "login"; books.clear(); blocks.clear(); emit pageChanged();
 }
-void Library::exitApp() { QCoreApplication::quit(); }
+void Library::exitApp(bool immediately) {
+    if (immediately) { QCoreApplication::quit(); return; }
+    if (exitPending) return;
+    exitPending = true;
+    const bool alreadySyncing = syncBusy;
+    if (!alreadySyncing) synchronizeProgress();
+    if (!syncBusy) { QCoreApplication::quit(); return; }
+    // A running upload may carry an older cursor. Finish it, then send the final pending position.
+    auto timer = new QTimer(this);
+    QElapsedTimer deadline; deadline.start();
+    connect(timer, &QTimer::timeout, this, [this, deadline, finalSync = alreadySyncing]() mutable {
+        if (deadline.hasExpired(5000)) { QCoreApplication::quit(); return; }
+        if (syncBusy) return;
+        if (finalSync) { finalSync = false; synchronizeProgress(); if (syncBusy) return; }
+        QCoreApplication::quit();
+    });
+    timer->start(100);
+}
 void Library::goBackToShelf() { synchronizeProgress(); ++readGeneration; page = "bookshelf"; reading = false; emit pageChanged(); }
 void Library::openBook(QString id, QString title, QString type, int bookVersion, bool, int, int) {
     ++readGeneration; int generation = readGeneration;

@@ -1,0 +1,11 @@
+{
+  "items": [
+    {"name": "安装 / 检查", "action": "bin/ocean.sh install", "exitmenu": true},
+    {"name": "微信读书", "action": "bin/ocean.sh weread", "exitmenu": true},
+    {"name": "DOOM", "action": "bin/ocean.sh doom", "exitmenu": true},
+    {"name": "Neo Geo · 合金弹头", "action": "bin/ocean.sh neogeo", "exitmenu": true},
+    {"name": "返回原厂桌面", "action": "bin/ocean.sh stock", "exitmenu": true},
+    {"name": "查看状态", "action": "bin/ocean.sh status", "exitmenu": true},
+    {"name": "卸载（保留账号和存档）", "action": "bin/ocean.sh uninstall", "exitmenu": true}
+  ]
+}

@@ -4,6 +4,7 @@ Rectangle {
     id: shelf
     color: "white"
     signal offlineRequested()
+    signal exitRequested()
     property int page: 0
     property int turns: 0
     property bool accountOpen: false
@@ -166,11 +167,12 @@ Rectangle {
 
     // Account sheet: the only rarely used action, kept out of the main layout.
     Rectangle {
-        visible: shelf.accountOpen; anchors.right: parent.right; anchors.rightMargin: shelf.margin; y: 112; width: 300; height: 200; z: 10
+        visible: shelf.accountOpen; anchors.right: parent.right; anchors.rightMargin: shelf.margin; y: 112; width: 300; height: 288; z: 10
         color: "white"; border.color: "black"; border.width: 2; radius: 8
         Column {
             anchors.centerIn: parent; spacing: 16
             Button { width: 252; label: "退出登录"; onActivated: { shelf.accountOpen = false; appController.logout() } }
+            Button { width: 252; label: "退出阅读器"; onActivated: { shelf.accountOpen = false; shelf.exitRequested() } }
             Button { width: 252; label: "取消"; onActivated: shelf.accountOpen = false }
         }
     }

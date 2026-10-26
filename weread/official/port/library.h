@@ -62,7 +62,7 @@ public:
     void notifyProgress();
 
     Q_INVOKABLE void logout();
-    Q_INVOKABLE void exitApp();
+    Q_INVOKABLE void exitApp(bool immediately = false);
     Q_INVOKABLE void openBook(QString id, QString title, QString format, int version, bool soldOut, int payType, int maxFree);
     Q_INVOKABLE void goBackToShelf();
     Q_INVOKABLE void loadChapter(int uid);
@@ -109,6 +109,7 @@ private:
     QString syncStatus;
     QTimer syncTimer;
     QJsonObject cloudAnchor;
+    bool exitPending = false;
     bool syncBusy = false, suppressChapterPosition = false, chapterPositionDirty = false;
     int syncGeneration = 0;
     qint64 lastMovement = 0, serverClockOffset = 0;

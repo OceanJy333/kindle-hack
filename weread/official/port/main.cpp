@@ -1,4 +1,4 @@
-// input: recovered official QML and rebuilt login module; output: native Qt screen; pos: Voyage integration entry.
+// input: native services and standalone QML; output: Kindle reader or legacy desk; pos: Qt entry.
 #include "desk.h"
 #include "native-screen.h"
 #include "library.h"
@@ -18,6 +18,11 @@
 #include <QSslConfiguration>
 #include <QSslCertificate>
 #include <qrencode.h>
+#include <memory>
+#include <csignal>
+
+static volatile std::sig_atomic_t publicExitRequested = 0;
+static void requestPublicExit(int signal) { publicExitRequested = signal; }
 
 class QrProvider final : public QQuickImageProvider {
 public:
@@ -39,40 +44,66 @@ public:
 };
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
+    const bool publicReader = qEnvironmentVariable("OCEAN_STOCK_APP") == "1";
     // A blinking caret would refresh the physical e-ink panel while typing.
     app.styleHints()->setCursorFlashTime(0);
-    QGuiApplication::setApplicationName("WeRead Voyage recovery");
+    QGuiApplication::setApplicationName("Ocean WeRead");
     const auto root = QCoreApplication::applicationDirPath();
     // Qt scans only fixed system cert dirs, which this rootfs lacks; load the bundled roots instead.
     auto ssl = QSslConfiguration::defaultConfiguration();
     ssl.setCaCertificates(QSslCertificate::fromPath(root + "/ca-certificates.crt"));
     QSslConfiguration::setDefaultConfiguration(ssl);
     auto id = QFontDatabase::addApplicationFont(root + "/fonts/NotoSansCJKsc-Regular.otf");
-    if (id < 0) qFatal("Original CJK font missing");
+    if (id < 0) qFatal("Bundled CJK font missing");
     auto family = QFontDatabase::applicationFontFamilies(id).value(0);
     app.setFont(QFont(family));
     Library auth(qEnvironmentVariable("WEREAD_STATE_DIR", "/var/local/weread-port"));
     Notes notes(&auth);
-    Desk desk; Eink eink; VoyagePen pen; VoyageFonts fonts; Wifi wifi;
-    QObject::connect(desk.power(),&PowerClient::lockedChanged,&wifi,&Wifi::setSuspended);
+    QTimer exitPoll;
+    if (publicReader) {
+        std::signal(SIGUSR2, requestPublicExit);
+        std::signal(SIGTERM, requestPublicExit);
+    }
+    Eink eink;
+    std::unique_ptr<Desk> desk;
+    std::unique_ptr<VoyagePen> pen;
+    std::unique_ptr<VoyageFonts> fonts;
+    std::unique_ptr<Wifi> wifi;
+    if (!publicReader) {
+        desk = std::make_unique<Desk>(); pen = std::make_unique<VoyagePen>();
+        fonts = std::make_unique<VoyageFonts>(); wifi = std::make_unique<Wifi>();
+        QObject::connect(desk->power(), &PowerClient::lockedChanged, wifi.get(), &Wifi::setSuspended);
+    }
     qmlRegisterType<Reader>("remarkable_weread", 1, 0, "ReaderPageItem");
-    qmlRegisterType<NoPenCanvas>("remarkable_weread", 1, 0, "InkCanvasItem");
+    if (!publicReader) qmlRegisterType<NoPenCanvas>("remarkable_weread", 1, 0, "InkCanvasItem");
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("eink", &eink);
-    engine.rootContext()->setContextProperty("desk", &desk);
-    engine.rootContext()->setContextProperty("wifi", &wifi);
-    engine.rootContext()->setContextProperty("pen", &pen);
-    engine.rootContext()->setContextProperty("readerFonts", &fonts);
+    if (!publicReader) {
+        engine.rootContext()->setContextProperty("desk", desk.get());
+        engine.rootContext()->setContextProperty("wifi", wifi.get());
+        engine.rootContext()->setContextProperty("pen", pen.get());
+        engine.rootContext()->setContextProperty("readerFonts", fonts.get());
+    }
     engine.rootContext()->setContextProperty("appVersion", "1.0.0 · Voyage 移植验证");
     engine.addImportPath(root + "/qml-modules");
     engine.addImageProvider("qr", new QrProvider);
     engine.rootContext()->setContextProperty("uiFontFamily", family);
     engine.rootContext()->setContextProperty("appController", &auth);
     engine.rootContext()->setContextProperty("bookNotes", &notes);
-    engine.load(QUrl::fromLocalFile(root + "/LoginHarness.qml"));
+    engine.load(QUrl::fromLocalFile(root + (publicReader ? "/ReaderApp.qml" : "/LoginHarness.qml")));
     if (engine.rootObjects().isEmpty()) return 1;
     auto window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
-    NativeScreen screen(window,&desk);
+    NativeScreen screen(window, desk.get());
+    if (publicReader) {
+        QObject::connect(&exitPoll, &QTimer::timeout, &auth, [&screen, window] {
+            if (publicExitRequested) {
+                const bool immediately = publicExitRequested == SIGUSR2;
+                publicExitRequested = 0; screen.stopUpdates();
+                QMetaObject::invokeMethod(window, "exitReader", Q_ARG(QVariant, QVariant(immediately)));
+            }
+        });
+        exitPoll.start(100);
+    }
     QObject::connect(&eink,&Eink::refreshRequested,&screen,[&screen](QRect rect){screen.clean(rect);});
     return app.exec();
 }

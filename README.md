@@ -1,64 +1,53 @@
 # Kindle Hack
 
-把旧 Kindle 变成能读微信读书、玩 DOOM 和合金弹头的小设备。
+给已越狱的旧 Kindle 装上微信读书、DOOM 和 Neo Geo 游戏。保留原厂系统，用 KUAL 菜单打开和退出。
 
-这里整理了 Ocean 在 Kindle Voyage 上做的原生 Qt 阅读器、DOOM / 合金弹头适配、墨水屏刷新和独立 Linux 系统源码。想照着做，可以把这个仓库交给 AI，让它按你的设备一步步设置。
+## 三步安装
 
-## 最简单的用法
+1. Kindle 已越狱并装好 **KUAL**。还没准备好，先走 [KindleModding 官方向导](https://kindlemodding.org/jailbreak-wizard.html)。
+2. 在[最新 Release](https://github.com/OceanJy333/kindle-hack/releases/latest) 下载 `kindle-hack-ai-kit.zip`，解压，把里面的 **`extensions` 文件夹复制到 Kindle USB 根目录**。已有同名文件夹时合并。
+3. 安全弹出 Kindle、拔下 USB，打开 **KUAL → Ocean → 安装 / 检查**。检查后从同一菜单打开微信读书或游戏。
 
-把下面这段发给能读 GitHub、运行本地命令的 AI 编程助手：
+微信读书在设备上扫码登录自己的账号。DOOM 的 `doom1.wad`、Neo Geo 的 `mslug.zip` 和 `neogeo.zip` 由使用者自备，位置见[设置指南](docs/setup.md)。
+
+## 交给 AI 安装
+
+具备**访问本地文件、执行命令**能力的桌面 AI 可以按固定步骤安装。普通聊天窗口可以讲解步骤。把这段完整发给能操作电脑的 AI：
 
 ```text
-请读取 https://github.com/OceanJy333/kindle-hack，先读 AGENTS.md 和
-.agents/skills/kindle-setup/SKILL.md，帮我设置 Kindle。
-
-我的型号是：____
-固件版本是：____
-是否已越狱：____
-电脑系统是：____
-我想用的功能是：微信读书 / DOOM / 合金弹头（选需要的）。
-
-先确认机型、系统和连接方式，再执行适合这台设备的构建与安装。
+请帮我安装 https://github.com/OceanJy333/kindle-hack 的最新懒人包。
+先读取仓库 docs/给AI的安装任务.md 和 AGENTS.md，严格执行其中的安装合同。
+下载最新 Release 的 kindle-hack-ai-kit.zip 与 SHA256SUMS，核对 SHA-256 后，
+自动识别已通过 USB 连接的 Kindle，安装预编译文件。不编译，不配置 SSH，
+不让我填写型号、固件或系统。需要我插拔 USB、点 KUAL 或扫码时再叫我。
+安装后回读 ocean/state/status.json，分别报告阅读器和游戏的结果。
 ```
 
-如果 AI 在本机工作，先克隆仓库：
+完整的固定步骤和错误处理见[给 AI 的安装任务](docs/给AI的安装任务.md)。
 
-```sh
-git clone https://github.com/OceanJy333/kindle-hack.git
-cd kindle-hack
-```
+## 机型范围
 
-Skill 随仓库提供。能读取文件的 AI 可直接使用，无需先安装进全局技能目录。
-
-## 先越狱，再设置
-
-运行这些程序需要已越狱的 Kindle，以及可以执行 root 命令的入口。安装和调试使用 SSH（远程终端连接）。
-
-还没越狱时，先查看 [KindleModding 入门](https://kindlemodding.org/jailbreaking/) 和[越狱向导](https://kindlemodding.org/jailbreak-wizard.html)。按自己的机型、固件和注册状态选择方法，再完成对应的越狱后设置。越狱和换系统是两件事；保留原厂系统也可以安装适配程序。
-
-这个项目的硬件适配以 **Kindle Voyage、ARMv7、原厂固件 5.13.6** 为起点。Ocean 的设备后来运行自编译的 `3.0.35-ocean-voyage` 内核。其他型号要核对显示、输入、处理器和系统库后再移植。
-
-## 有什么
-
-| 功能 | 内容 |
+| 设备 | 当前范围 |
 | --- | --- |
-| 微信读书 | 原生 Qt 客户端适配，扫码登录、书架、阅读、双向进度同步、划线段落评论和离线缓存 |
-| DOOM | doomgeneric 的 Voyage framebuffer、触摸和 PagePress 适配 |
-| 合金弹头 | FBA 2012 Neo Geo 核心的 ARMv7 适配，触屏按键与 PagePress |
-| 墨水屏刷新 | 游戏共用独立显示进程、A2 快速黑白刷新与 GC16 清残影 |
-| 独立系统 | Voyage 的内核、rootfs、引导、无线、SSH 和电源管理构建工具 |
+| Paperwhite 1（PW1） | 单独游戏候选 profile，必须通过本机静态运行、显示和输入探针。其常见 Linux 2.6.31 内核不满足当前 Qt 运行时的 Linux 3.0 最低要求，原生阅读器返回 `reader_runtime_unavailable` |
+| Paperwhite 2 / 3、Voyage | 已做显示、触摸与运行库预适配；本轮安装包待各型号实机验证 |
+| 其他型号或未知固件组合 | 自动检查；不匹配的 profile 或探针失败会报告原因 |
 
-DOOM、合金弹头、阅读刷新、手机与 Kindle 双向阅读进度和段落评论，已有 Ocean 的 Voyage 实机使用记录。独立系统也曾进入自编译内核。新设备仍需逐项验证安装、显示、输入和重启后的行为。
+历史 Voyage 实验有读书和游戏的实机记录。该记录与本次公共安装包的验证分开；不能据此认定所有机型、固件均已兼容。
 
-仓库还保留了本机首页、日报和电脑任务状态接入代码。
+菜单包含微信读书、DOOM、Neo Geo、返回原厂桌面、查看状态和卸载。应用运行时保留原厂电源服务；按电源键休眠会退出应用，唤醒后回原厂，需要时从 KUAL 重新打开。休眠行为待实机验证。
 
-## 从哪里开始
+## 源码与开发
 
-- **让 AI 帮你设置**：[Kindle Setup Skill](.agents/skills/kindle-setup/SKILL.md)
-- **安装顺序与设备检查**：[设置指南](docs/setup.md)
-- **源码、外部输入与构建命令**：[BUILD.md](BUILD.md)
-- **各模块**：`weread/`、`doom/`、`arcade/`、`games/`、`native/`、`system/`
+公共阅读器使用本仓库自主 QML 界面，运行包带 Qt、字体和 CA 证书，无需微信读书官方包的界面资源。账号和离线书库留在设备；卸载保留账号、书库和游戏存档。
 
-仓库提供自写代码、适配补丁和提取工具。微信读书官方安装包、原包 QML / 字体、Kindle 固件、设备面板数据、游戏 ROM / BIOS 由使用者自行准备，来源和用途见 [BUILD.md](BUILD.md)。账号在自己的设备扫码登录，SSH 密钥在自己的电脑生成。
+- [设置指南](docs/setup.md)：文件位置、验证、卸载与错误处理。
+- [Kindle Setup Skill](.agents/skills/kindle-setup/SKILL.md)：AI 执行入口。
+- [BUILD.md](BUILD.md)：源码构建及 Release 打包。
+- [本轮验证](docs/release-validation.md)：本地检查与待完成的设备实测。
+- `weread/`、`doom/`、`arcade/`、`games/`、`native/`：阅读、游戏和墨水屏显示。
+- `system/`：Voyage 独立 Linux 实验，开发者按[单独构建说明](system/BUILD.md)进入。
 
-上游来源包括 [doomgeneric](https://github.com/ozkl/doomgeneric)、[FBA 2012 Neo Geo](https://github.com/libretro/fbalpha2012_neogeo)、[微信读书墨水屏入口](https://ink.qq.com/)、[Kindle GPL 内核](https://github.com/katadelos/linux-3.0.35-lab126) 和 [barebox](https://www.barebox.org/)。各组件按其许可证使用。
+旧的官方资源提取、私有镜像和独立系统构建仍保留在开发者入口。普通 USB 安装走上述三步。
+
+上游包括 [doomgeneric](https://github.com/ozkl/doomgeneric)、[FBA 2012 Neo Geo](https://github.com/libretro/fbalpha2012_neogeo)、[Qt](https://www.qt.io/)、[Kindle GPL 内核](https://github.com/katadelos/linux-3.0.35-lab126) 和 [barebox](https://www.barebox.org/)。各组件按其许可证使用。
