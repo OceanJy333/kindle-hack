@@ -1,6 +1,8 @@
 # Kindle Hack
 
-给已越狱的旧 Kindle 装上微信读书、DOOM 和 Neo Geo 游戏。保留原厂系统，用 KUAL 菜单打开和退出。
+给旧 Kindle 装上微信读书、DOOM 和 Neo Geo 游戏。已经做了简单安装包，保留原厂系统，用 KUAL 菜单打开和退出。
+
+**请先自行完成 Kindle 越狱并安装 KUAL。** 按[KindleModding 官方向导](https://kindlemodding.org/jailbreak-wizard.html)操作，准备好后再用安装包。
 
 ## 三步安装
 
@@ -12,7 +14,7 @@
 
 ## 交给 AI 安装
 
-具备**访问本地文件、执行命令**能力的桌面 AI 可以按固定步骤安装。普通聊天窗口可以讲解步骤。把这段完整发给能操作电脑的 AI：
+可以交给具备**访问本地文件、操作电脑并执行命令**能力的 AI 尝试安装，比如你自己使用的 WorkBuddy 或豆包工作。把下面这段完整发给它：
 
 ```text
 请帮我安装 https://github.com/OceanJy333/kindle-hack 的最新懒人包。
@@ -21,6 +23,7 @@
 自动识别已通过 USB 连接的 Kindle，安装预编译文件。不编译，不配置 SSH，
 不让我填写型号、固件或系统。需要我插拔 USB、点 KUAL 或扫码时再叫我。
 安装后回读 ocean/state/status.json，分别报告阅读器和游戏的结果。
+实测后先退出应用、回到原厂桌面，再连接 USB。
 ```
 
 完整的固定步骤和错误处理见[给 AI 的安装任务](docs/给AI的安装任务.md)。
