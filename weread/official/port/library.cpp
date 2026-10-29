@@ -1,4 +1,5 @@
 // input: official shelf/TOC responses; output: QML data and persisted cursor; pos: recovered service flow.
+#include <unistd.h>
 #include "library.h"
 #include "offline-store.h"
 #include <QCoreApplication>
@@ -60,6 +61,8 @@ void Library::logout() {
     QFile::remove(directory + "/session-port.json"); page = "login"; books.clear(); blocks.clear(); emit pageChanged();
 }
 void Library::exitApp(bool immediately) {
+    // The process must end even if a network callback or the event loop stalls.
+    if (!immediately) alarm(8);
     if (immediately) { QCoreApplication::quit(); return; }
     if (exitPending) return;
     exitPending = true;

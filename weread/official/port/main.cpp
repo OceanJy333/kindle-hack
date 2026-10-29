@@ -20,6 +20,7 @@
 #include <qrencode.h>
 #include <memory>
 #include <csignal>
+#include <unistd.h>
 
 static volatile std::sig_atomic_t publicExitRequested = 0;
 static void requestPublicExit(int signal) { publicExitRequested = signal; }
@@ -98,12 +99,15 @@ int main(int argc, char **argv) {
         QObject::connect(&exitPoll, &QTimer::timeout, &auth, [&screen, window] {
             if (publicExitRequested) {
                 const bool immediately = publicExitRequested == SIGUSR2;
-                publicExitRequested = 0; screen.stopUpdates();
+                publicExitRequested = 0; alarm(immediately ? 2 : 8); screen.stopUpdates();
                 QMetaObject::invokeMethod(window, "exitReader", Q_ARG(QVariant, QVariant(immediately)));
             }
         });
         exitPoll.start(100);
     }
     QObject::connect(&eink,&Eink::refreshRequested,&screen,[&screen](QRect rect){screen.clean(rect);});
-    return app.exec();
+    const int status = app.exec();
+    // Teardown of network workers can stall; everything worth keeping is already posted.
+    if (publicReader) { fflush(nullptr); _exit(status); }
+    return status;
 }

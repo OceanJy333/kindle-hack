@@ -113,6 +113,9 @@ parent=$$
  lipc-wait-event -s 0 com.lab126.powerd goingToScreenSaver > "$session/sleep-event" 2> "$state/sleep.log" & event=$!
  if wait "$event"; then
   if [ "$action" = weread ]; then kill -USR2 "$app" 2>/dev/null || :; else kill -TERM "$app" 2>/dev/null || :; fi
+  # A reader that ignores the signal would leave stock paused and the device unresponsive.
+  n=0; while [ "$n" -lt 10 ] && kill -0 "$app" 2>/dev/null; do sleep 1; n=$((n+1)); done
+  if kill -0 "$app" 2>/dev/null; then kill -KILL "$app" 2>/dev/null || :; fi
  else
   kill -TERM "$parent" 2>/dev/null || :
  fi
