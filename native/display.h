@@ -7,6 +7,10 @@ enum display_mode { DISPLAY_AUTO=0, DISPLAY_CLEAN=1, DISPLAY_GRAY=2, DISPLAY_MON
 int display_open(void);
 int display_width(void);
 int display_height(void);
+int display_panel_size(int *w, int *h);
+int display_panel_width(void);
+int display_panel_height(void);
+int display_update_panel(uint32_t seq, int x, int y, int w, int h, int full, const uint8_t *pixels, size_t pitch);
 int display_refresh(uint32_t seq, int x, int y, int w, int h, int full);
 int display_update(uint32_t seq, int x, int y, int w, int h, int full, const uint8_t *pixels);
 int display_update_stride(uint32_t seq, int x, int y, int w, int h, int full, const uint8_t *pixels, size_t pitch);

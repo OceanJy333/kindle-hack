@@ -17,23 +17,33 @@ extern "C" {
 }
 class NativeScreen : public QObject {
  QQuickWindow *window;Desk *desk;int touch=-1,keys=-1;bool capturing=false,scheduled=false,sleeping=false,force=true,owned=true;
- QImage prior;QRect cleanArea;int large=0;
+ QImage prior;QRect cleanArea;int large=0;bool panelFrame=false;
+ QRect toPanel(QRect r)const{
+  if(r.isEmpty())return r;
+  double sx=double(display_panel_width())/display_width(),sy=double(display_panel_height())/display_height();
+  return QRect(QPoint(int(r.left()*sx),int(r.top()*sy)),QPoint(int(r.right()*sx)+1,int(r.bottom()*sy)+1));
+ }
  void capture(){
   scheduled=false;if(capturing||sleeping||(desk&&desk->gameActive()&&desk->notice().isEmpty()))return;
   capturing=true;QImage image=window->grabWindow().convertToFormat(QImage::Format_Grayscale8);capturing=false;
-  if(image.isNull()||image.width()!=display_width()||image.height()!=display_height())return;
+  // QT_SCALE_FACTOR makes Qt render at panel size; otherwise frames are logical-canvas sized and get resampled.
+  panelFrame=!image.isNull()&&image.width()==display_panel_width()&&qAbs(image.height()-display_panel_height())<=1;
+  if(panelFrame&&image.height()!=display_panel_height())image=image.copy(0,0,image.width(),qMin(image.height(),display_panel_height()));
+  if(image.isNull()||(!panelFrame&&(image.width()!=display_width()||image.height()!=display_height())))return;
   int left=image.width(),right=-1,top=image.height(),bottom=-1;
   if(force||prior.size()!=image.size()){left=top=0;right=image.width()-1;bottom=image.height()-1;}
   else for(int y=0;y<image.height();y++){
    const uchar *a=image.constScanLine(y),*b=prior.constScanLine(y);
    for(int x=0;x<image.width();x++)if((a[x]/17)!=(b[x]/17)){left=qMin(left,x);right=qMax(right,x);top=qMin(top,y);bottom=y;}
   }
-  QRect requested=cleanArea.intersected(image.rect());
+  QRect requested=(panelFrame?toPanel(cleanArea):cleanArea).intersected(image.rect());
   if(!requested.isEmpty()){left=qMin(left,requested.left());right=qMax(right,requested.right());top=qMin(top,requested.top());bottom=qMax(bottom,requested.bottom());}
   if(right>=left){int w=right-left+1,h=bottom-top+1;bool substantial=w*h>image.width()*image.height()/4;
    if(substantial)large++;int mode=(force||!requested.isEmpty())?DISPLAY_CLEAN:DISPLAY_GRAY;
    if(large>=6){mode=DISPLAY_CLEAN;large=0;}
-   display_update_stride(0,left,top,w,h,mode,image.constScanLine(top)+left,image.bytesPerLine());prior=image;force=false;cleanArea=QRect();
+   if(panelFrame)display_update_panel(0,left,top,w,h,mode,image.constScanLine(top)+left,image.bytesPerLine());
+   else display_update_stride(0,left,top,w,h,mode,image.constScanLine(top)+left,image.bytesPerLine());
+   prior=image;force=false;cleanArea=QRect();
   }
  }
  void schedule(){if(!scheduled&&!capturing){scheduled=true;QTimer::singleShot(20,this,[this]{capture();});}}
@@ -64,7 +74,7 @@ public:
   if(touch<0)qFatal("Cannot open touch device");if(keys>=0)ioctl(keys,EVIOCGRAB,1);
   auto tn=new QSocketNotifier(touch,QSocketNotifier::Read,this);
   connect(tn,&QSocketNotifier::activated,this,[this]{int x,y;while(touch_read(touch,&x,&y)){
-   if(!owned||sleeping)continue;QPointF p(x,y);
+   if(!owned||sleeping)continue;double ws=window->width()/double(display_width());QPointF p(x*ws,y*ws);
    QMouseEvent press(QEvent::MouseButtonPress,p,p,Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&press);
    QTimer::singleShot(90,this,[this,p]{QMouseEvent release(QEvent::MouseButtonRelease,p,p,Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QCoreApplication::sendEvent(window,&release);});
   }});

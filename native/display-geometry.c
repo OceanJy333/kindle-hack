@@ -24,7 +24,10 @@ static uint8_t area_gray(const uint8_t *canvas,int dx,int dy,int dw,int dh){
 int display_geometry_init(struct display_geometry *g,int width,int height){
     if(width<2||height<2)return -1;
     *g=(struct display_geometry){.width=width,.height=height,.w=width,.h=height};
-    if((int64_t)width*DISPLAY_HEIGHT>(int64_t)height*DISPLAY_WIDTH)g->w=height*DISPLAY_WIDTH/DISPLAY_HEIGHT;
+    int64_t wide=(int64_t)width*DISPLAY_HEIGHT,tall=(int64_t)height*DISPLAY_WIDTH,gap=wide>tall?wide-tall:tall-wide;
+    // A panel within 0.2% of the canvas ratio (758x1024) fills the screen instead of leaving a one-pixel margin.
+    if(gap*500<=tall){g->x=g->y=0;return 0;}
+    if(wide>tall)g->w=height*DISPLAY_WIDTH/DISPLAY_HEIGHT;
     else g->h=width*DISPLAY_HEIGHT/DISPLAY_WIDTH;
     g->x=(width-g->w)/2;g->y=(height-g->h)/2;return 0;
 }
@@ -83,6 +86,17 @@ void display_geometry_render(const struct display_geometry *g,const struct displ
         for(int px=r.x;px<r.x+r.w;px++){
             uint8_t gray=shrinks(g)?area_gray(canvas,px-g->x,py-g->y,g->w,g->h):canvas[sy*DISPLAY_WIDTH+sample(px-g->x,g->w,DISPLAY_WIDTH)];
             if(f->inverted)gray=255-gray;
+            if(f->bpp==8)*out++=gray;
+            else {uint16_t value=channel(gray,f->red_offset,f->red_length)|channel(gray,f->green_offset,f->green_length)|channel(gray,f->blue_offset,f->blue_length);memcpy(out,&value,2);out+=2;}
+        }
+    }
+}
+void display_geometry_blit(const struct display_geometry *g,const struct display_format *f,uint8_t *fb,size_t stride,int xoffset,int yoffset,int x,int y,int w,int h,const uint8_t *pixels,size_t pitch){
+    for(int row=0;row<h;row++){
+        uint8_t *out=fb+(g->y+y+row+yoffset)*stride+(g->x+x+xoffset)*(f->bpp/8);
+        const uint8_t *in=pixels+row*pitch;
+        for(int col=0;col<w;col++){
+            uint8_t gray=f->inverted?255-in[col]:in[col];
             if(f->bpp==8)*out++=gray;
             else {uint16_t value=channel(gray,f->red_offset,f->red_length)|channel(gray,f->green_offset,f->green_length)|channel(gray,f->blue_offset,f->blue_length);memcpy(out,&value,2);out+=2;}
         }

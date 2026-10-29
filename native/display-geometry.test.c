@@ -68,6 +68,16 @@ static void panel(int width,int height,unsigned bpp){
         size_t index=(py+yoffset)*stride+(px+xoffset)*bytes;
         assert(abs(display_geometry_gray(&format,a+index)-display_geometry_gray(&format,b+index))<=4);
     }
+    // Panel-native blit lands 1:1 inside the viewport with the same padding and format rules.
+    memset(a,0xa5,size);
+    {int bx=g.w/3,by=g.h/5,bw=g.w/4,bh=g.h/6;unsigned char *patch=malloc((size_t)(bw+9)*bh);assert(patch);
+     for(int row=0;row<bh;row++)for(int col=0;col<bw;col++)patch[row*(bw+9)+col]=(unsigned char)(col*11+row*5);
+     display_geometry_blit(&g,&format,a,stride,xoffset,yoffset,bx,by,bw,bh,patch,bw+9);
+     for(int row=0;row<bh;row++)for(int col=0;col<bw;col++){
+         unsigned char *pixel=a+(g.y+by+row+yoffset)*stride+(g.x+bx+col+xoffset)*bytes;
+         assert(abs(display_geometry_gray(&format,pixel)-patch[row*(bw+9)+col])<=4);
+     }
+     assert(a[(g.y+by+bh+yoffset)*stride+(g.x+bx+xoffset)*bytes]==0xa5);free(patch);}
     free(a);free(b);free(canvas);free(patched);free(source);printf("PASS %dx%d %ubpp viewport=%d,%d %dx%d\n",width,height,bpp,g.x,g.y,g.w,g.h);
 }
 int main(void){

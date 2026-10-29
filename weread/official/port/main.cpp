@@ -84,6 +84,14 @@ int main(int argc, char **argv) {
         engine.rootContext()->setContextProperty("pen", pen.get());
         engine.rootContext()->setContextProperty("readerFonts", fonts.get());
     }
+    // Panels narrower than the 1072px canvas get a window at panel size; QML scales the logical layout into it.
+    int panelWidth = 1072, panelHeight = 1448, probedWidth = 0, probedHeight = 0;
+    if (publicReader && display_panel_size(&probedWidth, &probedHeight) == 0 && probedWidth < 1072) {
+        panelWidth = probedWidth; panelHeight = probedHeight;
+    }
+    engine.rootContext()->setContextProperty("panelWidth", panelWidth);
+    engine.rootContext()->setContextProperty("panelHeight", panelHeight);
+    engine.rootContext()->setContextProperty("panelScale", panelWidth / 1072.0);
     engine.rootContext()->setContextProperty("appVersion", "1.0.0 · Voyage 移植验证");
     engine.addImportPath(root + "/qml-modules");
     engine.addImageProvider("qr", new QrProvider);
