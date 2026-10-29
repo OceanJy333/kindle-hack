@@ -38,6 +38,14 @@ if [ "$profile" = unknown ]; then
   *Paperwhite\ 3*|*PaperWhite\ 3*) profile=pw3;;
  esac
 fi
+# Some PW2 units report a /proc/usid prefix outside the serial table; the 758-wide EPDC and Wario board identify them.
+if [ "$profile" = unknown ]; then
+ board=$(sed -n 's/^Hardware[[:space:]]*:[[:space:]]*//p' "$sys/proc/cpuinfo" 2>/dev/null | head -n 1) || :
+ fbsize=$(cat "$sys/sys/class/graphics/fb0/virtual_size" 2>/dev/null) || :
+ case "$board:$fbsize:$kernel" in
+  *Wario*:768,*:3.0.35|*Wario*:768,*:3.0.35-*) profile=pw2;;
+ esac
+fi
 qt_candidate=0
 kernel_supported=0
 major=${kernel%%.*}
