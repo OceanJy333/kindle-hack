@@ -28,8 +28,19 @@ static void panel(int width,int height,unsigned bpp){
     for(int py=0;py<height;py++)for(int px=0;px<width;px++){
         unsigned char *pixel=a+(py+yoffset)*stride+(px+xoffset)*bytes;
         if(px<g.x||px>=g.x+g.w||py<g.y||py>=g.y+g.h){assert(display_geometry_gray(&format,pixel)==255);continue;}
-        int sx=(px-g.x)*(DISPLAY_WIDTH-1)/(g.w-1),sy=(py-g.y)*(DISPLAY_HEIGHT-1)/(g.h-1);
-        int actual=display_geometry_gray(&format,pixel),expected=canvas[sy*DISPLAY_WIDTH+sx];assert(abs(actual-expected)<=4);
+        int actual=display_geometry_gray(&format,pixel),expected;
+        if(g.w<DISPLAY_WIDTH&&g.h<DISPLAY_HEIGHT){
+            // Reference box average, weighting each logical pixel by its overlap with this physical pixel.
+            double sum=0;int dx=px-g.x,dy=py-g.y;
+            double x0=(double)dx*DISPLAY_WIDTH/g.w,x1=(double)(dx+1)*DISPLAY_WIDTH/g.w,y0=(double)dy*DISPLAY_HEIGHT/g.h,y1=(double)(dy+1)*DISPLAY_HEIGHT/g.h;
+            for(int y=(int)y0;y<y1&&y<DISPLAY_HEIGHT;y++)for(int x=(int)x0;x<x1&&x<DISPLAY_WIDTH;x++){
+                double wx=(x+1<x1?x+1:x1)-(x>x0?x:x0),wy=(y+1<y1?y+1:y1)-(y>y0?y:y0);sum+=canvas[y*DISPLAY_WIDTH+x]*wx*wy;
+            }
+            expected=(int)(sum/((x1-x0)*(y1-y0))+.5);assert(abs(actual-expected)<=5);
+        }else{
+            int sx=(px-g.x)*(DISPLAY_WIDTH-1)/(g.w-1),sy=(py-g.y)*(DISPLAY_HEIGHT-1)/(g.h-1);
+            expected=canvas[sy*DISPLAY_WIDTH+sx];assert(abs(actual-expected)<=4);
+        }
     }
     // Raw axes deliberately have nonzero minima. Viewport corners must hit the same logical corners.
     for(int corner=0;corner<4;corner++){
@@ -42,6 +53,14 @@ static void panel(int width,int height,unsigned bpp){
     assert(display_geometry_rect(&g,-1,0,1,1,&full)<0);assert(display_geometry_rect(&g,0,0,DISPLAY_WIDTH+1,1,&full)<0);
     for(int y=0;y<yoffset;y++)for(size_t x=0;x<stride;x++)assert(a[y*stride+x]==0xa5);
     for(int y=0;y<height;y++)for(size_t x=(width+xoffset)*bytes;x<stride;x++)assert(a[(y+yoffset)*stride+x]==0xa5);
+    int shrunk=g.w<DISPLAY_WIDTH&&g.h<DISPLAY_HEIGHT;
+    if(shrunk){
+        // Averaging blends neighbours of the nearest-neighbour capture, so check that flat gray survives the round trip.
+        for(int py=g.y;py<g.y+g.h;py++)for(int px=g.x;px<g.x+g.w;px++){
+            size_t index=(py+yoffset)*stride+(px+xoffset)*bytes;
+            if(bytes==1)a[index]=117;else{uint16_t value=(uint16_t)((14<<11)|(29<<5)|14);memcpy(a+index,&value,2);}
+        }
+    }
     display_geometry_capture(&g,&format,a,stride,xoffset,yoffset,patched);
     display_geometry_render(&g,&format,b,stride,xoffset,yoffset,patched,full);
     // RGB565 capture rounds through eight-bit gray: tolerate one channel quantization step.
