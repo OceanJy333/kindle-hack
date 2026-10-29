@@ -91,12 +91,21 @@ void display_geometry_render(const struct display_geometry *g,const struct displ
         }
     }
 }
+static uint8_t tone[256];
+static int tone_ready;
+// Blends identity with a square curve so anti-aliased glyph edges read as heavier strokes on e-ink; 0 is the identity.
+void display_geometry_set_darkness(int percent){
+    if(percent<0)percent=0;if(percent>100)percent=100;
+    for(int i=0;i<256;i++)tone[i]=(uint8_t)(i-percent*(i-i*i/255)/100);
+    tone_ready=1;
+}
 void display_geometry_blit(const struct display_geometry *g,const struct display_format *f,uint8_t *fb,size_t stride,int xoffset,int yoffset,int x,int y,int w,int h,const uint8_t *pixels,size_t pitch){
     for(int row=0;row<h;row++){
         uint8_t *out=fb+(g->y+y+row+yoffset)*stride+(g->x+x+xoffset)*(f->bpp/8);
         const uint8_t *in=pixels+row*pitch;
         for(int col=0;col<w;col++){
-            uint8_t gray=f->inverted?255-in[col]:in[col];
+            uint8_t gray=tone_ready?tone[in[col]]:in[col];
+            if(f->inverted)gray=255-gray;
             if(f->bpp==8)*out++=gray;
             else {uint16_t value=channel(gray,f->red_offset,f->red_length)|channel(gray,f->green_offset,f->green_length)|channel(gray,f->blue_offset,f->blue_length);memcpy(out,&value,2);out+=2;}
         }
