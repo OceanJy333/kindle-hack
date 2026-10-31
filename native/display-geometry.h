@@ -14,4 +14,5 @@ void display_canvas_write(uint8_t *canvas,int x,int y,int w,int h,const uint8_t 
 void display_geometry_capture(const struct display_geometry *g,const struct display_format *f,const uint8_t *fb,size_t stride,int xoffset,int yoffset,uint8_t *canvas);
 void display_geometry_clear_margins(const struct display_geometry *g,const struct display_format *f,uint8_t *fb,size_t stride,int xoffset,int yoffset);
 void display_geometry_render(const struct display_geometry *g,const struct display_format *f,uint8_t *fb,size_t stride,int xoffset,int yoffset,const uint8_t *canvas,struct display_rect r);
+void display_geometry_blit(const struct display_geometry *g,const struct display_format *f,uint8_t *fb,size_t stride,int xoffset,int yoffset,int x,int y,int w,int h,const uint8_t *pixels,size_t pitch);
 uint8_t display_geometry_gray(const struct display_format *f,const uint8_t *pixel);

@@ -77,6 +77,24 @@ int display_update_stride(uint32_t seq,int x,int y,int w,int h,int full,const ui
     display_geometry_render(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset,canvas,r);
     return display_refresh(seq,x,y,w,h,full);
 }
+static int refresh_region(uint32_t seq,struct display_rect r,int full);
+int display_panel_size(int *w,int *h){
+    struct fb_var_screeninfo v;struct display_geometry g;
+    int probe=open("/dev/fb0",O_RDONLY|O_CLOEXEC);
+    if(probe<0)return -1;
+    int bad=ioctl(probe,FBIOGET_VSCREENINFO,&v)||display_geometry_init(&g,v.xres,v.yres);
+    close(probe);if(bad)return -1;
+    *w=g.w;*h=g.h;return 0;
+}
+int display_panel_width(void){return geometry.w;}
+int display_panel_height(void){return geometry.h;}
+// Pixels are in viewport coordinates and reach the panel 1:1, so a UI rendered at panel size is not resampled.
+int display_update_panel(uint32_t seq,int x,int y,int w,int h,int full,const uint8_t *pixels,size_t pitch){
+    if(fb<0||!pixels||w<=0||h<=0||pitch<(size_t)w||x<0||y<0||x>geometry.w-w||y>geometry.h-h){errno=EINVAL;return -1;}
+    if(x==0&&y==0&&w==geometry.w&&h==geometry.h)display_geometry_clear_margins(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset);
+    display_geometry_blit(&geometry,&format,memory,fix.line_length,var.xoffset,var.yoffset,x,y,w,h,pixels,pitch);
+    return refresh_region(seq,(struct display_rect){geometry.x+x,geometry.y+y,w,h},full);
+}
 int display_wait(void){
     if(fb<0||!submitted_marker)return 0;
     if(pearl){uint32_t marker=submitted_marker;return ioctl(fb,_IOW('F',0x2f,uint32_t),&marker)<0?-1:0;}
@@ -84,11 +102,8 @@ int display_wait(void){
     // Success may be remaining timeout ticks rather than zero.
     return ioctl(fb,_IOWR('F',0x2f,struct completion),&done)<0?-1:0;
 }
-int display_refresh(uint32_t seq,int x,int y,int w,int h,int full){
-    struct display_rect r;
-    if(fb<0||display_geometry_rect(&geometry,x,y,w,h,&r)){errno=EINVAL;return -1;}
+static int refresh_region(uint32_t seq,struct display_rect r,int full){
     if(!r.w||!r.h)return 0;
-    if(x==0&&y==0&&w==DISPLAY_WIDTH&&h==DISPLAY_HEIGHT)r=(struct display_rect){0,0,geometry.width,geometry.height};
     static uint32_t marker;(void)seq;
     struct update u={0};u.region=(struct rect){r.y,r.x,r.w,r.h};
     u.waveform=full==DISPLAY_FAST_MONO?4:full==DISPLAY_MONO?1:full?2:257;
@@ -102,6 +117,12 @@ int display_refresh(uint32_t seq,int x,int y,int w,int h,int full){
         fprintf(stderr,"DISPLAY_COMPLETE marker=%u wait_us=%lld result=%d\n",u.marker,elapsed,result);return result;
     }
     return 0;
+}
+int display_refresh(uint32_t seq,int x,int y,int w,int h,int full){
+    struct display_rect r;
+    if(fb<0||display_geometry_rect(&geometry,x,y,w,h,&r)){errno=EINVAL;return -1;}
+    if(x==0&&y==0&&w==DISPLAY_WIDTH&&h==DISPLAY_HEIGHT)r=(struct display_rect){0,0,geometry.width,geometry.height};
+    return refresh_region(seq,r,full);
 }
 int display_copy(uint8_t *pixels){
     if(fb<0||!pixels)return -1;

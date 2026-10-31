@@ -79,6 +79,7 @@ Rectangle {
         font.family: uiFontFamily; font.pixelSize: 25; color: "#555555"
     }
     ReaderPageItem {
+        textureSize: panelScale < 1 ? Qt.size(Math.round(width * panelScale), Math.round(height * panelScale)) : Qt.size(0, 0)
         id: page; objectName: "readerPage"
         x: 0; y: 86; width: parent.width; height: parent.height - 168
         onCursorChanged: function(blockIndex, charOffset) {

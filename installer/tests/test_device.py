@@ -125,6 +125,26 @@ while True: time.sleep(.02)
         self.assertEqual(self.status()['hardware'], 'unsupported_device_profile')
         self.assertNotIn('KILLALL', self.trace.read_text())
 
+    def test_unlisted_serial_prefix_uses_wario_board_and_758_wide_epdc(self):
+        (self.sys / 'proc/usid').write_text('901722SECRET1234')
+        (self.sys / 'proc/cpuinfo').write_text('Hardware\t: Freescale i.MX 6SoloLite based Wario Board\n')
+        graphics = self.sys / 'sys/class/graphics/fb0'
+        graphics.mkdir(parents=True)
+        (graphics / 'virtual_size').write_text('768,4096\n')
+        self.assertEqual(self.run_ocean('install').returncode, 0)
+        inventory = json.loads((self.usb / 'ocean/state/device.json').read_text())
+        self.assertEqual(inventory['profile'], 'pw2')
+        self.assertEqual(inventory['kernelSupported'], 1)
+
+    def test_unlisted_serial_prefix_with_other_screen_stays_unknown(self):
+        (self.sys / 'proc/usid').write_text('901722SECRET1234')
+        (self.sys / 'proc/cpuinfo').write_text('Hardware\t: Freescale i.MX 6SoloLite based Wario Board\n')
+        graphics = self.sys / 'sys/class/graphics/fb0'
+        graphics.mkdir(parents=True)
+        (graphics / 'virtual_size').write_text('1088,5792\n')
+        self.run_ocean('install')
+        self.assertEqual(json.loads((self.usb / 'ocean/state/device.json').read_text())['profile'], 'unknown')
+
     def test_missing_game_data_blocks_handoff(self):
         (self.usb / 'games/doom1.wad').unlink()
         self.assertEqual(self.run_ocean('doom').returncode, 1)
