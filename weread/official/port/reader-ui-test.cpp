@@ -46,6 +46,9 @@ int main(int argc,char **argv) {
     engine.rootContext()->setContextProperty("appController",controller);
     engine.rootContext()->setContextProperty("bookNotes",controller);
     engine.rootContext()->setContextProperty("uiFontFamily",family);
+    engine.rootContext()->setContextProperty("panelWidth",1072);
+    engine.rootContext()->setContextProperty("panelHeight",1448);
+    engine.rootContext()->setContextProperty("panelScale",1.0);
     QQmlComponent inkComponent(&engine);
     inkComponent.setData("import QtQuick; QtObject { function clearGhosting() {} }",QUrl());
     auto eink=inkComponent.create();engine.rootContext()->setContextProperty("eink",eink);
