@@ -1,5 +1,7 @@
 # Kindle Hack
 
+[English](README.en.md) · 中文
+
 给旧 Kindle 装上微信读书、DOOM 和 Neo Geo 游戏。已经做了简单安装包，保留原厂系统，用 KUAL 菜单打开和退出。
 
 **请先自行完成 Kindle 越狱并安装 KUAL。** 按[KindleModding 官方向导](https://kindlemodding.org/jailbreak-wizard.html)操作，准备好后再用安装包。
