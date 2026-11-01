@@ -107,7 +107,7 @@ while True: time.sleep(.02)
         self.assertEqual(json.loads(inventory)['profile'], 'voyage')
         self.assertEqual(json.loads(inventory)['modelPrefix'], 'B013')
         trace = self.trace.read_text()
-        self.assertLess(trace.index('HARDWARE'), trace.index('RUNTIME --local'))
+        self.assertIn('RUNTIME --local', trace)
         self.assertNotIn('KILLALL', trace)
 
     def test_pw1_does_not_execute_qt_loader(self):
@@ -118,11 +118,12 @@ while True: time.sleep(.02)
         self.assertNotIn('LOADER', self.trace.read_text())
         self.assertIn('GAME_PROBE', self.trace.read_text())
 
-    def test_unknown_profile_and_failed_hardware_block_handoff(self):
+    def test_unknown_serial_does_not_block_runtime_checks(self):
         (self.sys / 'proc/usid').write_text('UNKNOWN123456789')
         self.script(self.ext / 'bin/device-probe', 'echo OCEAN_HARDWARE_READY=0; exit 1')
-        self.assertEqual(self.run_ocean('doom').returncode, 1)
-        self.assertEqual(self.status()['hardware'], 'unsupported_device_profile')
+        self.assertEqual(self.run_ocean('install').returncode, 0)
+        self.assertEqual(self.status()['hardware'], 'checked_on_app_start')
+        self.assertEqual(self.status()['reader'], 'ready')
         self.assertNotIn('KILLALL', self.trace.read_text())
 
     def test_unlisted_serial_prefix_uses_wario_board_and_758_wide_epdc(self):

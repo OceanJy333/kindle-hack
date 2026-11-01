@@ -48,15 +48,15 @@ if [ "$profile" = unknown ]; then
 fi
 qt_candidate=0
 kernel_supported=0
-major=${kernel%%.*}
-case "$major" in ''|*[!0-9]*) major=0;; esac
-case "$profile" in pw2|pw3|voyage) [ "$major" -lt 3 ] || qt_candidate=1;; esac
-case "$profile:$kernel" in
- pw1:2.6.31|pw1:2.6.31-*) kernel_supported=1;;
- pw2:3.0.35|pw2:3.0.35-*|pw3:3.0.35|pw3:3.0.35-*|voyage:3.0.35|voyage:3.0.35-*) kernel_supported=1;;
+# Runtime compatibility follows the driver generation, not a serial-number whitelist.
+case "$kernel" in
+ 2.6.31|2.6.31-*) kernel_supported=1;;
+ 3.0.35|3.0.35-*) kernel_supported=1; qt_candidate=1;;
 esac
+runtime_profile=$profile
+[ "$profile" != unknown ] || runtime_profile=
 case "${1:---json}" in
  --json) printf '{"profile":"%s","modelPrefix":"%s","firmware":"%s","kernel":"%s","arch":"%s","qtCandidate":%s,"kernelSupported":%s}\n' "$profile" "$prefix" "$firmware" "$kernel" "$arch" "$qt_candidate" "$kernel_supported";;
- --shell) printf 'OCEAN_DEVICE_PROFILE=%s\nOCEAN_MODEL_PREFIX=%s\nOCEAN_FIRMWARE=%s\nOCEAN_KERNEL=%s\nOCEAN_ARCH=%s\nOCEAN_QT_CANDIDATE=%s\nOCEAN_KERNEL_SUPPORTED=%s\n' "$profile" "$prefix" "${firmware:-unknown}" "$kernel" "$arch" "$qt_candidate" "$kernel_supported";;
+ --shell) printf 'OCEAN_DEVICE_PROFILE=%s\nOCEAN_MODEL_PREFIX=%s\nOCEAN_FIRMWARE=%s\nOCEAN_KERNEL=%s\nOCEAN_ARCH=%s\nOCEAN_QT_CANDIDATE=%s\nOCEAN_KERNEL_SUPPORTED=%s\n' "$runtime_profile" "$prefix" "${firmware:-unknown}" "$kernel" "$arch" "$qt_candidate" "$kernel_supported";;
  *) exit 2;;
 esac

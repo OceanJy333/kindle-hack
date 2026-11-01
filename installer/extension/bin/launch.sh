@@ -34,7 +34,14 @@ case "$action" in
  doom) component=$OCEAN_DOOM_STATUS;;
  neogeo) component=$OCEAN_NEOGEO_STATUS;;
 esac
-if [ "$component" != ready ]; then say "Ocean: $component (ocean/state/status.json)"; exit 1; fi
+if [ "$component" != ready ]; then
+ case "$component" in
+  missing_mslug_or_neogeo_zip) say "Copy mslug.zip + neogeo.zip to games/roms/";;
+  missing_doom1_wad) say "Copy doom1.wad to games/";;
+  *) say "Ocean: $component (ocean/state/status.json)";;
+ esac
+ exit 1
+fi
 # Resolve every dependency and data path before pausing stock drawing.
 for tool in lipc-set-prop lipc-get-prop lipc-wait-event killall pidof; do
  command -v "$tool" >/dev/null 2>&1 || { say "Ocean: missing $tool"; exit 1; }

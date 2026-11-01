@@ -30,18 +30,8 @@ check() {
  "$ext/bin/detect.sh" --json > "$state/device.json"
  . "$state/device.env"
  export OCEAN_DEVICE_PROFILE
- hardware=hardware_probe_failed
- probe_ok=0
- OCEAN_HARDWARE_READY=0
- if [ -x "$ext/bin/device-probe" ]; then
-  # Both outputs are produced by our fixed-value binary; never evaluate serial or firmware text.
-  if bounded "$ext/bin/device-probe" --shell > "$state/probe.env" 2> "$state/probe.log"; then hardware=ready; probe_ok=1; fi
-  if ! grep -Ev '^OCEAN_(STATIC_RUNTIME|KERNEL_READY|DISPLAY_READY|INPUT_READY|HARDWARE_READY|FB_WIDTH|FB_HEIGHT|FB_BPP)=[0-9]+$' "$state/probe.env" | grep -q .; then
-   . "$state/probe.env"
-  fi
-  bounded "$ext/bin/device-probe" --json > "$state/probe.json" 2>> "$state/probe.log" || :
- fi
- [ "$probe_ok" = 1 ] || OCEAN_HARDWARE_READY=0
+ # Display and input are opened by the app; do not duplicate model/size restrictions here.
+ hardware=checked_on_app_start
  reader=reader_runtime_unavailable
  if [ "$OCEAN_QT_CANDIDATE" = 1 ] && [ "$OCEAN_KERNEL_SUPPORTED" = 1 ]; then
   export QT_PLUGIN_PATH="$runtime/plugins" SSL_CERT_FILE="$runtime/ca-certificates.crt"
@@ -67,22 +57,14 @@ check() {
    if [ -f "$usb/games/roms/mslug.zip" ] && [ -f "$usb/games/roms/neogeo.zip" ]; then neogeo=ready; fi
   fi
  fi
- if [ "$OCEAN_HARDWARE_READY" != 1 ]; then
-  hardware=hardware_probe_failed
-  [ "$OCEAN_DEVICE_PROFILE" != unknown ] || hardware=unsupported_device_profile
-  [ "$reader" != ready ] || reader=hardware_probe_failed
-  [ "$doom" != ready ] || doom=hardware_probe_failed
-  [ "$neogeo" != ready ] || neogeo=hardware_probe_failed
- fi
  if [ "$OCEAN_KERNEL_SUPPORTED" != 1 ]; then
   hardware=unsupported_kernel
-  [ "$OCEAN_DEVICE_PROFILE" != unknown ] || hardware=unsupported_device_profile
   [ "$reader" != ready ] || reader=unsupported_kernel
   [ "$doom" != ready ] || doom=unsupported_kernel
   [ "$neogeo" != ready ] || neogeo=unsupported_kernel
  fi
  next=read_probe_logs
- case "$hardware" in unsupported_*) next=report_device_json;; ready)
+ case "$hardware" in unsupported_*) next=report_device_json;; checked_on_app_start)
   case "$reader:$doom:$neogeo" in
    *ready*) next=open_kual_app;;
    *missing_doom*|*missing_mslug*) next=copy_game_data_then_check;;
@@ -90,7 +72,7 @@ check() {
   esac;;
  esac
  printf 'OCEAN_READER_STATUS=%s\nOCEAN_DOOM_STATUS=%s\nOCEAN_NEOGEO_STATUS=%s\n' "$reader" "$doom" "$neogeo" > "$state/components.env"
- printf '{"phase":"checked","profile":"%s","hardware":"%s","reader":"%s","doom":"%s","neogeo":"%s","next":"%s","sleepResume":"unverified"}\n' "$OCEAN_DEVICE_PROFILE" "$hardware" "$reader" "$doom" "$neogeo" "$next" > "$state/status.json"
+ printf '{"phase":"checked","profile":"%s","hardware":"%s","reader":"%s","doom":"%s","neogeo":"%s","next":"%s","sleepResume":"unverified"}\n' "${OCEAN_DEVICE_PROFILE:-unknown}" "$hardware" "$reader" "$doom" "$neogeo" "$next" > "$state/status.json"
 }
 show_status() {
  if [ -f "$state/status.json" ]; then cat "$state/status.json"; else printf '{"phase":"awaiting_device_check"}\n'; fi
