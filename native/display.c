@@ -53,6 +53,7 @@ int display_open(void){
     if(fb<0)return -1;
     if(ioctl(fb,FBIOGET_FSCREENINFO,&fix)||ioctl(fb,FBIOGET_VSCREENINFO,&var))goto fail;
     if((var.bits_per_pixel!=8&&var.bits_per_pixel!=16)||display_geometry_init(&geometry,var.xres,var.yres)){errno=ENOTSUP;goto fail;}
+    {const char *darkness=getenv("OCEAN_TEXT_DARKNESS");display_geometry_set_darkness(darkness?atoi(darkness):60);}
     format=(struct display_format){var.bits_per_pixel,var.red.offset,var.red.length,var.green.offset,var.green.length,var.blue.offset,var.blue.length,var.grayscale==2};
     if(var.bits_per_pixel==16&&(!var.green.length||var.red.offset+var.red.length>16||var.green.offset+var.green.length>16||var.blue.offset+var.blue.length>16)){errno=ENOTSUP;goto fail;}
     if((size_t)(var.xres+var.xoffset)*(var.bits_per_pixel/8)>fix.line_length||(size_t)(var.yres+var.yoffset)*fix.line_length>fix.smem_len){errno=EINVAL;goto fail;}

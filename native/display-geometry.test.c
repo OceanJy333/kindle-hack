@@ -80,7 +80,21 @@ static void panel(int width,int height,unsigned bpp){
      assert(a[(g.y+by+bh+yoffset)*stride+(g.x+bx+xoffset)*bytes]==0xa5);free(patch);}
     free(a);free(b);free(canvas);free(patched);free(source);printf("PASS %dx%d %ubpp viewport=%d,%d %dx%d\n",width,height,bpp,g.x,g.y,g.w,g.h);
 }
+static void darkness(void){
+    struct display_geometry g;struct display_format format={8,0,0,0,0,0,0,0};
+    assert(!display_geometry_init(&g,758,1024));
+    static unsigned char fb[768*1024];const unsigned char in[4]={0,64,128,255};
+    // Full strength squares the level, zero leaves pixels untouched, and white and black never move.
+    display_geometry_set_darkness(100);memset(fb,0x55,sizeof(fb));
+    display_geometry_blit(&g,&format,fb,768,0,0,0,0,4,1,in,4);
+    assert(fb[0]==0&&fb[1]==16&&fb[2]==64&&fb[3]==255);
+    display_geometry_set_darkness(0);
+    display_geometry_blit(&g,&format,fb,768,0,0,0,0,4,1,in,4);
+    assert(fb[0]==0&&fb[1]==64&&fb[2]==128&&fb[3]==255);
+    printf("PASS darkness\n");
+}
 int main(void){
     panel(600,800,8);panel(600,800,16);panel(758,1024,8);panel(758,1024,16);panel(1072,1448,8);panel(1072,1448,16);
+    darkness();
     return 0;
 }

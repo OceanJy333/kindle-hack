@@ -18,6 +18,9 @@ void Reader::paint(QPainter *painter) {
     QAbstractTextDocumentLayout::PaintContext context;
     context.clip = QRectF(0, current * height(), width() - 2 * margin, height());
     context.palette.setColor(QPalette::Text, Qt::black);
+    // Regular-weight CJK strokes fall to about one device pixel at panel size; a second pass thickens them.
+    document.documentLayout()->draw(painter, context);
+    painter->translate(0.7, 0);
     document.documentLayout()->draw(painter, context); painter->restore();
 }
 void Reader::setContent(QVariantList values) {
